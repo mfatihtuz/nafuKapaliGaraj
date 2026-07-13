@@ -16,14 +16,14 @@ SET @user   = 'de969c39-8c71-4cbd-a0a2-715a111beef8';
 
 INSERT INTO tenants (id, name, plan, locale, settings) VALUES
   (@tenant, 'Fatih Garaj Atölyesi', 'free', 'tr', JSON_OBJECT(
-     'qr_base_url', 'https://d.ORNEK.com/l/',
+     'qr_base_url', 'https://nafuhome.mftyazilim.com/depo_yonetimi/l/',
      'label_grid',  JSON_OBJECT('w_mm', 38, 'h_mm', 21, 'cols', 5, 'rows', 13),
      'default_count_mode', 'exact'
   ));
 
 -- Parola: 'degistir123' — İLK GİRİŞTEN SONRA DEĞİŞTİR
 INSERT INTO users (id, email, password_hash, display_name) VALUES
-  (@user, 'fatih@ornek.com', '$argon2id$PLACEHOLDER_HASH_BURAYA', 'Fatih');
+  (@user, 'fatih@ornek.com', '$argon2id$v=19$m=65536,t=4,p=1$NENDWU5qZVN3RHRFVUpFeg$BmM/pUNgr9xe6LfcUxUDRyNamB7iJp1Pi87jn/aGotQ', 'Fatih');
 
 INSERT INTO tenant_users (tenant_id, user_id, role) VALUES (@tenant, @user, 'owner');
 

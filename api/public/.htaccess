@@ -1,0 +1,49 @@
+# DEPO — Apache yönlendirme (Hostinger paylaşımlı hosting)
+# Yerleşim: public_html/depo_yonetimi/
+
+Options -Indexes -MultiViews
+DirectoryIndex index.html
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /depo_yonetimi/
+
+    # private/ klasörüne HTTP erişimini engelle (yedek — private/.htaccess de var)
+    RewriteRule ^private/ - [F,L]
+
+    # API istekleri → front controller
+    RewriteRule ^api/ index.php [L,QSA]
+
+    # Gerçek dosya/dizin varsa doğrudan sun (assets, ikonlar, manifest, sw.js…)
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Kalan her şey SPA'ya (React Router client-side yönlendirme: /l/:code, /search…)
+    RewriteRule ^ index.html [L]
+</IfModule>
+
+# --- Güvenlik başlıkları ---
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# --- Statik varlık cache'i (Vite hash'li dosyalar) ---
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 month"
+</IfModule>
+
+# Service worker ve manifest cache'lenmemeli
+<IfModule mod_headers.c>
+    <FilesMatch "(sw\.js|manifest\.webmanifest|index\.html)$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
+# PHP hata gösterimini kapat (canlı)
+php_flag display_errors off
