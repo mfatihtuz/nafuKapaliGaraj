@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-mist text-brand-900 font-sans antialiased;
+    overscroll-behavior-y: none;
+  }
+  /* Güvenli alan (çentikli telefonlar) */
+  :root {
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold
+           min-h-touch px-4 transition-transform active:scale-[0.97] select-none disabled:opacity-50;
+  }
+  .btn-primary { @apply btn bg-accent text-brand-900 shadow-card hover:bg-accent-400; }
+  .btn-navy    { @apply btn bg-brand text-white hover:bg-brand-600; }
+  .btn-ghost   { @apply btn bg-white text-brand-700 border border-mist hover:bg-brand-50; }
+  .btn-danger  { @apply btn bg-red-600 text-white hover:bg-red-700; }
+  .btn-icon    { @apply inline-flex items-center justify-center rounded-xl min-h-touch min-w-touch; }
+
+  .card { @apply bg-white rounded-2xl shadow-card; }
+
+  .input {
+    @apply w-full min-h-touch rounded-xl border border-mist bg-white px-4 text-base text-brand-900
+           outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 placeholder:text-brand-300;
+  }
+  .field-label { @apply text-sm font-medium text-brand-500 mb-1 block; }
+
+  .chip { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold; }
+  .chip-full  { @apply chip bg-green-100 text-green-800; }
+  .chip-low   { @apply chip bg-amber-100 text-amber-800; }
+  .chip-empty { @apply chip bg-red-100 text-red-700; }
+
+  /* Konum kodu — aramanın cevabı; en büyük eleman (PRD §5.3) */
+  .loc-code { @apply font-mono font-extrabold tracking-tight text-brand-700; }
+}
+
+/* Yazdırma (etiketler) */
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}
