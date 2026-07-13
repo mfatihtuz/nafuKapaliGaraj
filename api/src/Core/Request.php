@@ -21,6 +21,7 @@ final class Request
         public readonly array $body,
         public readonly array $cookies,
         public readonly array $headers,
+        public readonly string $ip = '0.0.0.0',
     ) {}
 
     public static function fromGlobals(string $basePath = ''): self
@@ -67,13 +68,15 @@ final class Request
             }
         }
 
-        return new self($method, $path, $_GET, $body, $_COOKIE, $headers);
+        $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+
+        return new self($method, $path, $_GET, $body, $_COOKIE, $headers, $ip);
     }
 
     /** Test amaçlı elle inşa. */
-    public static function make(string $method, string $path, array $query = [], array $body = [], array $cookies = []): self
+    public static function make(string $method, string $path, array $query = [], array $body = [], array $cookies = [], string $ip = '0.0.0.0'): self
     {
-        return new self(strtoupper($method), $path, $query, $body, $cookies, []);
+        return new self(strtoupper($method), $path, $query, $body, $cookies, [], $ip);
     }
 
     public function query(string $key, mixed $default = null): mixed

@@ -23,8 +23,13 @@ final class AuthService
      * Yeni kullanıcı + tenant (ürünleştirme / self-servis kayıt).
      * @return array{token:string,user:array<string,mixed>,tenant:array<string,mixed>,role:string}
      */
-    public function register(string $email, string $password, string $displayName): array
+    public function register(string $email, string $password, string $displayName, string $ip = '0.0.0.0'): array
     {
+        // Kaba-kuvvet/toplu kayıt koruması (ip başına).
+        $key = $this->throttleKey($ip, 'register');
+        $this->throttleAssert($key);
+        $this->throttleFail($key);
+
         $email = mb_strtolower(trim($email));
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             throw HttpException::unprocessable('Geçersiz e-posta');
@@ -70,9 +75,13 @@ final class AuthService
      * Giriş. Başarılıysa yeni session token döner.
      * @return array{token:string,user:array<string,mixed>,tenant:array<string,mixed>,role:string}
      */
-    public function login(string $email, string $password): array
+    public function login(string $email, string $password, string $ip = '0.0.0.0'): array
     {
         $email = mb_strtolower(trim($email));
+        // Kaba-kuvvet koruması (ip + e-posta başına). Kilitliyse 429.
+        $key = $this->throttleKey($ip, 'login:' . $email);
+        $this->throttleAssert($key);
+
         $user = $this->db->one(
             'SELECT id, email, password_hash, display_name FROM users WHERE email = :e',
             ['e' => $email]
@@ -80,11 +89,15 @@ final class AuthService
         // Zamanlama sızıntısını azalt: kullanıcı yoksa da bir hash doğrula.
         if ($user === null) {
             password_verify($password, '$argon2id$v=19$m=65536,t=4,p=1$YWFhYWFhYWFhYWFh$0000000000000000000000000000000000000000000');
+            $this->throttleFail($key);
             throw HttpException::unauthorized('E-posta veya parola hatalı');
         }
         if (!password_verify($password, (string) $user['password_hash'])) {
+            $this->throttleFail($key);
             throw HttpException::unauthorized('E-posta veya parola hatalı');
         }
+        // Başarılı giriş → sayaç sıfırla.
+        $this->throttleReset($key);
 
         $membership = $this->db->one(
             'SELECT tenant_id, role FROM tenant_users WHERE user_id = :u ORDER BY created_at ASC LIMIT 1',
@@ -128,6 +141,92 @@ final class AuthService
             $tenant['settings'] = json_decode($tenant['settings'], true);
         }
         return ['user' => $user, 'tenant' => $tenant, 'role' => $role];
+    }
+
+    // --- Kaba-kuvvet koruması (login_attempts) ------------------------------
+
+    private const TH_WINDOW_MIN = 15;   // deneme penceresi
+    private const TH_THRESHOLD = 5;     // bu kadar başarısızlıktan sonra kilit
+    private const TH_MAX_LOCK_MIN = 60; // üst sınır kilit süresi
+
+    private function throttleKey(string $ip, string $scope): string
+    {
+        return hash('sha256', $ip . '|' . $scope);
+    }
+
+    /** login_attempts tablosunu (yoksa) oluştur — canlıda ekstra migration gerekmesin. */
+    private function ensureThrottleTable(): void
+    {
+        if ($this->db->pdo()->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql') {
+            return; // testlerde (sqlite) tablo önceden kurulu
+        }
+        $this->db->run(
+            'CREATE TABLE IF NOT EXISTS login_attempts (
+               id CHAR(64) NOT NULL PRIMARY KEY,
+               attempts INT UNSIGNED NOT NULL DEFAULT 0,
+               first_at DATETIME(3) NOT NULL,
+               locked_until DATETIME(3) NULL,
+               updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+               KEY idx_la_locked (locked_until)
+             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci'
+        );
+    }
+
+    /** Kilitliyse 429 fırlat. */
+    private function throttleAssert(string $key): void
+    {
+        $this->ensureThrottleTable();
+        $row = $this->db->one('SELECT locked_until FROM login_attempts WHERE id = :id', ['id' => $key]);
+        if ($row !== null && $row['locked_until'] !== null) {
+            $until = strtotime((string) $row['locked_until'] . ' UTC');
+            if ($until !== false && $until > time()) {
+                throw HttpException::tooManyRequests('Çok fazla deneme. ' . ($until - time()) . ' sn sonra tekrar deneyin.');
+            }
+        }
+    }
+
+    /** Başarısız denemeyi kaydet; eşik aşılırsa kilitle (üstel geri çekilme). */
+    private function throttleFail(string $key): void
+    {
+        $now = Time::now();
+        $windowStart = (new \DateTimeImmutable('-' . self::TH_WINDOW_MIN . ' minutes', new \DateTimeZone('UTC')))
+            ->format('Y-m-d H:i:s.v');
+
+        $row = $this->db->one('SELECT attempts, first_at FROM login_attempts WHERE id = :id', ['id' => $key]);
+
+        if ($row === null) {
+            $this->db->run(
+                'INSERT INTO login_attempts (id, attempts, first_at, locked_until, updated_at)
+                 VALUES (:id, 1, :now, NULL, :now2)',
+                ['id' => $key, 'now' => $now, 'now2' => $now]
+            );
+            return;
+        }
+        if ((string) $row['first_at'] < $windowStart) {
+            // Pencere doldu → sıfırdan başla.
+            $this->db->run(
+                'UPDATE login_attempts SET attempts = 1, first_at = :now, locked_until = NULL, updated_at = :now2 WHERE id = :id',
+                ['now' => $now, 'now2' => $now, 'id' => $key]
+            );
+            return;
+        }
+
+        $attempts = (int) $row['attempts'] + 1;
+        $lockedUntil = null;
+        if ($attempts >= self::TH_THRESHOLD) {
+            $lockMin = min(self::TH_MAX_LOCK_MIN, 2 ** ($attempts - self::TH_THRESHOLD));
+            $lockedUntil = (new \DateTimeImmutable("+{$lockMin} minutes", new \DateTimeZone('UTC')))
+                ->format('Y-m-d H:i:s.v');
+        }
+        $this->db->run(
+            'UPDATE login_attempts SET attempts = :a, locked_until = :lu, updated_at = :now WHERE id = :id',
+            ['a' => $attempts, 'lu' => $lockedUntil, 'now' => $now, 'id' => $key]
+        );
+    }
+
+    private function throttleReset(string $key): void
+    {
+        $this->db->run('DELETE FROM login_attempts WHERE id = :id', ['id' => $key]);
     }
 
     private function createSession(string $userId, string $tenantId): string

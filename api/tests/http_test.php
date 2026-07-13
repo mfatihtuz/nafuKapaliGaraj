@@ -134,4 +134,15 @@ $db->run('INSERT INTO sessions (token, user_id, tenant_id, expires_at) VALUES (:
 $vpush = dispatch($db, $config, 'POST', '/api/sync/push', ['ops' => $ops], [$cookieName => $vToken]);
 eq($vpush['error'] ?? null, 'forbidden', 'viewer push → forbidden');
 
+// 11. Rate limiting: 5 başarısız login → kilit → 429
+fwrite(STDOUT, "\nHTTP — rate limiting (kaba-kuvvet koruması)\n");
+$rlEmail = 'throttle@depo.local';
+$last = [];
+for ($i = 1; $i <= 5; $i++) {
+    $last = dispatch($db, $config, 'POST', '/api/auth/login', ['email' => $rlEmail, 'password' => 'yanlis']);
+}
+eq($last['error'] ?? null, 'unauthorized', '5. başarısız deneme hâlâ unauthorized');
+$locked = dispatch($db, $config, 'POST', '/api/auth/login', ['email' => $rlEmail, 'password' => 'yanlis']);
+eq($locked['error'] ?? null, 'too_many_requests', '6. deneme kilitlendi (429)');
+
 exit(test_summary());

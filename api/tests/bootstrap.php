@@ -54,6 +54,11 @@ function make_test_db(): array
       applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now')),
       PRIMARY KEY (tenant_id, op_id)
     );
+    CREATE TABLE login_attempts (
+      id TEXT PRIMARY KEY, attempts INTEGER NOT NULL DEFAULT 0,
+      first_at TEXT NOT NULL, locked_until TEXT NULL,
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now'))
+    );
     CREATE TABLE categories (
       id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, parent_id TEXT NULL, name_tr TEXT NOT NULL,
       name_en TEXT NULL, code TEXT NOT NULL, attribute_schema TEXT NULL, sku_template TEXT NULL,

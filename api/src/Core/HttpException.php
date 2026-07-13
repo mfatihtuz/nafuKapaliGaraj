@@ -45,4 +45,8 @@ class HttpException extends \RuntimeException
     {
         return new self(422, 'unprocessable', $message);
     }
+    public static function tooManyRequests(string $message = 'Çok fazla deneme'): self
+    {
+        return new self(429, 'too_many_requests', $message);
+    }
 }

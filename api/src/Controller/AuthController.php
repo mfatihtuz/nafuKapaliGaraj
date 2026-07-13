@@ -27,7 +27,8 @@ final class AuthController
         $result = $this->auth->register(
             (string) $req->input('email', ''),
             (string) $req->input('password', ''),
-            (string) $req->input('display_name', '')
+            (string) $req->input('display_name', ''),
+            $req->ip
         );
         $this->issueCookie($res, $result['token']);
         $res->json($this->publicPayload($result), 201);
@@ -37,7 +38,8 @@ final class AuthController
     {
         $result = $this->auth->login(
             (string) $req->input('email', ''),
-            (string) $req->input('password', '')
+            (string) $req->input('password', ''),
+            $req->ip
         );
         $this->issueCookie($res, $result['token']);
         $res->json($this->publicPayload($result), 200);

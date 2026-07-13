@@ -79,6 +79,16 @@ CREATE TABLE sync_ops (
   KEY idx_so_tenant (tenant_id, applied_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- Kaba-kuvvet koruması: login/register deneme kısıtlama (ip+email başına).
+CREATE TABLE login_attempts (
+  id           CHAR(64)     NOT NULL PRIMARY KEY,   -- sha256(ip|email)
+  attempts     INT UNSIGNED NOT NULL DEFAULT 0,
+  first_at     DATETIME(3)  NOT NULL,
+  locked_until DATETIME(3)  NULL,
+  updated_at   DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  KEY idx_la_locked (locked_until)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 -- ------------------------------------------------------------
 -- KATEGORİLER & ÖZNİTELİK ŞABLONLARI
 -- ------------------------------------------------------------
