@@ -75,16 +75,19 @@ final class AuthService
      * Giriş. Başarılıysa yeni session token döner.
      * @return array{token:string,user:array<string,mixed>,tenant:array<string,mixed>,role:string}
      */
-    public function login(string $email, string $password, string $ip = '0.0.0.0'): array
+    public function login(string $identifier, string $password, string $ip = '0.0.0.0'): array
     {
-        $email = mb_strtolower(trim($email));
-        // Kaba-kuvvet koruması (ip + e-posta başına). Kilitliyse 429.
-        $key = $this->throttleKey($ip, 'login:' . $email);
+        $this->ensureUserSchema();
+        $identifier = trim($identifier);
+        $lower = mb_strtolower($identifier);
+        // Kaba-kuvvet koruması (ip + kimlik başına). Kilitliyse 429.
+        $key = $this->throttleKey($ip, 'login:' . $lower);
         $this->throttleAssert($key);
 
+        // Kullanıcı adı VEYA e-posta ile giriş (collation aksan/harf duyarsız).
         $user = $this->db->one(
-            'SELECT id, email, password_hash, display_name FROM users WHERE email = :e',
-            ['e' => $email]
+            'SELECT id, email, username, password_hash, display_name FROM users WHERE email = :e OR username = :u',
+            ['e' => $lower, 'u' => $identifier]
         );
         // Zamanlama sızıntısını azalt: kullanıcı yoksa da bir hash doğrula.
         if ($user === null) {
@@ -121,7 +124,7 @@ final class AuthService
         $token = $this->createSession((string) $user['id'], (string) $membership['tenant_id']);
         return [
             'token'  => $token,
-            'user'   => ['id' => $user['id'], 'email' => $user['email'], 'display_name' => $user['display_name']],
+            'user'   => ['id' => $user['id'], 'email' => $user['email'], 'username' => $user['username'] ?? null, 'display_name' => $user['display_name']],
             'tenant' => $tenant,
             'role'   => (string) $membership['role'],
         ];
@@ -135,7 +138,8 @@ final class AuthService
     /** @return array<string,mixed> */
     public function me(string $userId, string $tenantId, string $role): array
     {
-        $user = $this->db->one('SELECT id, email, display_name FROM users WHERE id = :id', ['id' => $userId]);
+        $this->ensureUserSchema();
+        $user = $this->db->one('SELECT id, email, username, display_name FROM users WHERE id = :id', ['id' => $userId]);
         $tenant = $this->db->one('SELECT id, name, locale, settings FROM tenants WHERE id = :id', ['id' => $tenantId]);
         if ($tenant !== null && is_string($tenant['settings'] ?? null)) {
             $tenant['settings'] = json_decode($tenant['settings'], true);
@@ -154,22 +158,14 @@ final class AuthService
         return hash('sha256', $ip . '|' . $scope);
     }
 
-    /** login_attempts tablosunu (yoksa) oluştur — canlıda ekstra migration gerekmesin. */
     private function ensureThrottleTable(): void
     {
-        if ($this->db->pdo()->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql') {
-            return; // testlerde (sqlite) tablo önceden kurulu
-        }
-        $this->db->run(
-            'CREATE TABLE IF NOT EXISTS login_attempts (
-               id CHAR(64) NOT NULL PRIMARY KEY,
-               attempts INT UNSIGNED NOT NULL DEFAULT 0,
-               first_at DATETIME(3) NOT NULL,
-               locked_until DATETIME(3) NULL,
-               updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-               KEY idx_la_locked (locked_until)
-             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci'
-        );
+        \Depo\Support\Schema::ensureLoginAttempts($this->db);
+    }
+
+    private function ensureUserSchema(): void
+    {
+        \Depo\Support\Schema::ensureUsername($this->db);
     }
 
     /** Kilitliyse 429 fırlat. */

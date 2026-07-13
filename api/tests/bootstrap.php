@@ -32,7 +32,7 @@ function make_test_db(): array
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now'))
     );
     CREATE TABLE users (
-      id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+      id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, username TEXT NULL UNIQUE, password_hash TEXT NOT NULL,
       display_name TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now'))
     );
     CREATE TABLE tenant_users (

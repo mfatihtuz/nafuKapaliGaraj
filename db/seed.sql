@@ -21,11 +21,18 @@ INSERT INTO tenants (id, name, plan, locale, settings) VALUES
      'default_count_mode', 'exact'
   ));
 
--- Parola: 'degistir123' — İLK GİRİŞTEN SONRA DEĞİŞTİR
-INSERT INTO users (id, email, password_hash, display_name) VALUES
-  (@user, 'fatih@ornek.com', '$argon2id$v=19$m=65536,t=4,p=1$NENDWU5qZVN3RHRFVUpFeg$BmM/pUNgr9xe6LfcUxUDRyNamB7iJp1Pi87jn/aGotQ', 'Fatih');
+-- Yönetici kullanıcılar. Parolalar İLK GİRİŞTEN SONRA DEĞİŞTİRİLMELİ.
+--   mfatihtuz  / Fraude45.     (kullanıcı adı ile giriş)
+--   fatih@ornek.com / degistir123
+SET @admin = '019f5d4d-7930-7e5b-9e5d-a82897a56f95';
 
-INSERT INTO tenant_users (tenant_id, user_id, role) VALUES (@tenant, @user, 'owner');
+INSERT INTO users (id, email, username, password_hash, display_name) VALUES
+  (@admin, 'mfatihtuz@nafuhome.local', 'mfatihtuz', '$argon2id$v=19$m=65536,t=4,p=1$ejlLZ1oueEhWbm83RHlIOA$HiKb9BthfCW19h6bX2fJCTFnDNd80vvHec7r3cLScis', 'M. Fatih'),
+  (@user,  'fatih@ornek.com',          NULL,        '$argon2id$v=19$m=65536,t=4,p=1$NENDWU5qZVN3RHRFVUpFeg$BmM/pUNgr9xe6LfcUxUDRyNamB7iJp1Pi87jn/aGotQ', 'Fatih');
+
+INSERT INTO tenant_users (tenant_id, user_id, role) VALUES
+  (@tenant, @admin, 'owner'),
+  (@tenant, @user,  'owner');
 
 -- ---------- Kategoriler ----------
 INSERT INTO categories (id, tenant_id, parent_id, code, name_tr, name_en, sku_template, default_count_mode, attribute_schema, sort_order) VALUES

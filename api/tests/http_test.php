@@ -134,6 +134,41 @@ $db->run('INSERT INTO sessions (token, user_id, tenant_id, expires_at) VALUES (:
 $vpush = dispatch($db, $config, 'POST', '/api/sync/push', ['ops' => $ops], [$cookieName => $vToken]);
 eq($vpush['error'] ?? null, 'forbidden', 'viewer push → forbidden');
 
+// Account & Org yönetimi
+fwrite(STDOUT, "\nHTTP — hesap & organizasyon yönetimi\n");
+
+// Owner, kullanıcı adı ile bir 'member' oluşturur
+$mk = dispatch($db, $config, 'POST', '/api/org/users',
+    ['username' => 'ahmet', 'password' => 'gizli1234', 'display_name' => 'Ahmet', 'role' => 'member'],
+    [$cookieName => $token]);
+eq($mk['user']['username'] ?? null, 'ahmet', 'owner yeni kullanıcı oluşturdu');
+$ahmetId = (string) ($mk['user']['id'] ?? '');
+
+// Kullanıcı adı ile giriş
+$al = dispatch($db, $config, 'POST', '/api/auth/login', ['email' => 'ahmet', 'password' => 'gizli1234']);
+eq($al['user']['username'] ?? null, 'ahmet', 'kullanıcı adı ile giriş çalışıyor');
+
+// member, organizasyon kullanıcılarını listeleyemez (owner-only)
+$ahmetToken = tokenFor($db, $ahmetId);
+$forbidden = dispatch($db, $config, 'GET', '/api/org/users', [], [$cookieName => $ahmetToken]);
+eq($forbidden['error'] ?? null, 'forbidden', 'member org/users erişemez (403)');
+
+// owner listeler
+$list = dispatch($db, $config, 'GET', '/api/org/users', [], [$cookieName => $token]);
+check(count($list['users'] ?? []) >= 2, 'owner kullanıcıları listeledi');
+
+// Parola değiştirme + yeni parola ile giriş
+$pw = dispatch($db, $config, 'POST', '/api/account/password',
+    ['current_password' => 'parola1234', 'new_password' => 'yeniparola99'], [$cookieName => $token]);
+eq($pw['ok'] ?? null, true, 'parola değişti');
+$nl = dispatch($db, $config, 'POST', '/api/auth/login', ['email' => 'fatih@depo.local', 'password' => 'yeniparola99']);
+eq($nl['user']['email'] ?? null, 'fatih@depo.local', 'yeni parola ile giriş');
+
+// Yanlış mevcut parola ile değişiklik reddedilir
+$pwBad = dispatch($db, $config, 'POST', '/api/account/password',
+    ['current_password' => 'yanlis', 'new_password' => 'baska1234'], [$cookieName => $token]);
+eq($pwBad['error'] ?? null, 'unauthorized', 'yanlış mevcut parola reddedildi');
+
 // 11. Rate limiting: 5 başarısız login → kilit → 429
 fwrite(STDOUT, "\nHTTP — rate limiting (kaba-kuvvet koruması)\n");
 $rlEmail = 'throttle@depo.local';

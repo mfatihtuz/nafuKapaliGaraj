@@ -24,10 +24,12 @@ CREATE TABLE tenants (
 CREATE TABLE users (
   id             CHAR(36)     NOT NULL PRIMARY KEY,
   email          VARCHAR(190) NOT NULL,
+  username       VARCHAR(60)  NULL,             -- kullanıcı adı ile giriş (opsiyonel)
   password_hash  VARCHAR(255) NOT NULL,
   display_name   VARCHAR(120) NOT NULL,
   created_at     DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  UNIQUE KEY uq_users_email (email)
+  UNIQUE KEY uq_users_email (email),
+  UNIQUE KEY uq_users_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE tenant_users (
