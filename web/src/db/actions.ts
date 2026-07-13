@@ -43,6 +43,14 @@ export async function softDeletePart(id: string): Promise<void> {
   engine.schedule()
 }
 
+export async function softDeleteCategory(id: string): Promise<void> {
+  const ts = nowIso()
+  const local = await db.categories.get(id)
+  if (local) await db.categories.put({ ...local, deleted_at: ts, updated_at: ts })
+  await enqueue({ type: 'delete', entity: 'category', data: { id, updated_at: ts } })
+  engine.schedule()
+}
+
 // --- Stok hareketleri (defter — delta toplanabilir) -------------------------
 
 export interface MoveInput {

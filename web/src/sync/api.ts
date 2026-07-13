@@ -51,10 +51,20 @@ export interface BootstrapResult {
   server_time: string
 }
 
+export interface OrgUser {
+  id: string
+  email: string | null
+  username: string | null
+  display_name: string
+  role: 'owner' | 'member' | 'viewer'
+  created_at: string
+}
+
 export const api = {
   health: () => request<{ ok: boolean; db: boolean }>('GET', '/health'),
-  login: (email: string, password: string) =>
-    request<AuthState>('POST', '/auth/login', { email, password }),
+  // identifier: kullanıcı adı veya e-posta
+  login: (identifier: string, password: string) =>
+    request<AuthState>('POST', '/auth/login', { email: identifier, password }),
   register: (email: string, password: string, display_name: string) =>
     request<AuthState>('POST', '/auth/register', { email, password, display_name }),
   logout: () => request<{ ok: boolean }>('POST', '/auth/logout'),
@@ -63,4 +73,21 @@ export const api = {
   pull: (since: number, limit = 500) =>
     request<PullResult>('GET', `/sync/pull?since=${since}&limit=${limit}`),
   push: (ops: unknown[]) => request<PushResult>('POST', '/sync/push', { ops }),
+
+  // Hesap
+  changePassword: (current_password: string, new_password: string) =>
+    request<{ ok: boolean }>('POST', '/account/password', { current_password, new_password }),
+  updateProfile: (data: { display_name?: string; email?: string; username?: string }) =>
+    request<{ user: OrgUser }>('POST', '/account/profile', data),
+
+  // Organizasyon (owner)
+  listUsers: () => request<{ users: OrgUser[] }>('GET', '/org/users'),
+  createUser: (data: { username?: string; email?: string; password: string; display_name: string; role: string }) =>
+    request<{ user: OrgUser }>('POST', '/org/users', data),
+  setUserRole: (user_id: string, role: string) =>
+    request<{ ok: boolean }>('POST', '/org/users/role', { user_id, role }),
+  removeUser: (user_id: string) => request<{ ok: boolean }>('POST', '/org/users/remove', { user_id }),
+  renameOrg: (name: string) => request<{ tenant: { id: string; name: string } }>('POST', '/org/rename', { name }),
+  updateOrgSettings: (settings: Record<string, unknown>) =>
+    request<{ settings: Record<string, unknown> }>('POST', '/org/settings', { settings }),
 }

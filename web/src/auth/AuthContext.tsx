@@ -10,8 +10,9 @@ interface AuthCtx {
   auth: AuthState | null
   loading: boolean
   authExpired: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (identifier: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  refresh: () => Promise<void>
 }
 
 const Ctx = createContext<AuthCtx | null>(null)
@@ -43,13 +44,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const login = useCallback(async (email: string, password: string) => {
-    const result = await api.login(email, password)
+  const login = useCallback(async (identifier: string, password: string) => {
+    const result = await api.login(identifier, password)
     await persistAuth(result)
     setAuthState(result)
     setAuthExpired(false)
     engine.start()
     void engine.sync()
+  }, [])
+
+  const refresh = useCallback(async () => {
+    try {
+      const result = await api.me()
+      await persistAuth(result)
+      setAuthState(result)
+    } catch {
+      /* çevrimdışı olabilir — önbellek kalır */
+    }
   }, [])
 
   const logout = useCallback(async () => {
@@ -65,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <Ctx.Provider value={{ auth, loading, authExpired, login, logout }}>
+    <Ctx.Provider value={{ auth, loading, authExpired, login, logout, refresh }}>
       {children}
     </Ctx.Provider>
   )

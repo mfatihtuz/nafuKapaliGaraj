@@ -118,7 +118,7 @@ export function Intake() {
         await moveStock({ partId, locationId: locationMatch.id, delta: 0, reason: 'initial' })
       }
 
-      toast.show(t('intake.saved', { sku }), 'success')
+      toast.show(t('intake.saved', { code: sku }), 'success')
       resetPart()
     } finally {
       setBusy(false)
@@ -166,7 +166,7 @@ export function Intake() {
                 </div>
               )}
               <div className="rounded-xl bg-brand-50 px-3 py-2">
-                <span className="text-xs text-brand-400">{t('intake.sku_preview')}: </span>
+                <span className="text-xs text-brand-400">{t('intake.code_preview')}: </span>
                 <span className="font-mono font-bold text-brand-800">{sku || '—'}</span>
               </div>
               <div className="mt-3">
@@ -177,7 +177,7 @@ export function Intake() {
 
             {/* 3. Konum */}
             <div className="card mb-3 p-4">
-              <label className="field-label" htmlFor="loc">{t('intake.scan_location')}</label>
+              <label className="field-label" htmlFor="loc">{t('intake.location')}</label>
               <input
                 id="loc"
                 list="loc-codes"

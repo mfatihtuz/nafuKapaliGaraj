@@ -34,6 +34,9 @@ export default {
         ink: '#000000',
         mist: '#e5e5e5',
         paper: '#ffffff',
+        // Yüzey tonları (paletten türetilmiş nötrler)
+        canvas: '#f1f2f4', // uygulama arka planı (mist'in açık tonu)
+        line: '#e2e4e8', // ince kenarlıklar
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],

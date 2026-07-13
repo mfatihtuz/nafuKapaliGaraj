@@ -8,45 +8,75 @@
     -webkit-text-size-adjust: 100%;
   }
   body {
-    @apply bg-mist text-brand-900 font-sans antialiased;
+    @apply bg-canvas text-brand-900 font-sans antialiased;
     overscroll-behavior-y: none;
   }
-  /* Güvenli alan (çentikli telefonlar) */
   :root {
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-top: env(safe-area-inset-top, 0px);
   }
+  h1, h2, h3 { @apply tracking-tight; }
+  * { -webkit-font-smoothing: antialiased; }
 }
 
 @layer components {
+  /* --- Butonlar (ölçülü, kurumsal) --- */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold
-           min-h-touch px-4 transition-transform active:scale-[0.97] select-none disabled:opacity-50;
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold
+           transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-1;
+    min-height: 2.5rem;
   }
-  .btn-primary { @apply btn bg-accent text-brand-900 shadow-card hover:bg-accent-400; }
-  .btn-navy    { @apply btn bg-brand text-white hover:bg-brand-600; }
-  .btn-ghost   { @apply btn bg-white text-brand-700 border border-mist hover:bg-brand-50; }
+  .btn-lg { min-height: 3rem; @apply px-5 text-base; }
+  .btn-primary { @apply btn bg-accent text-brand-900 hover:bg-accent-400 active:bg-accent-600 shadow-sm; }
+  .btn-navy    { @apply btn bg-brand-700 text-white hover:bg-brand-600 active:bg-brand-800; }
+  .btn-outline { @apply btn border border-line bg-white text-brand-700 hover:bg-canvas; }
+  .btn-subtle  { @apply btn bg-brand-50 text-brand-600 hover:bg-brand-100; }
+  .btn-ghost   { @apply btn border border-line bg-white text-brand-700 hover:bg-canvas; }
   .btn-danger  { @apply btn bg-red-600 text-white hover:bg-red-700; }
-  .btn-icon    { @apply inline-flex items-center justify-center rounded-xl min-h-touch min-w-touch; }
+  .btn-icon    { @apply inline-grid place-items-center rounded-lg transition-colors; min-height: 2.5rem; min-width: 2.5rem; }
 
-  .card { @apply bg-white rounded-2xl shadow-card; }
+  /* --- Yüzeyler --- */
+  .card { @apply rounded-xl border border-line bg-white; }
+  .card-pad { @apply p-4 sm:p-5; }
 
-  .input {
-    @apply w-full min-h-touch rounded-xl border border-mist bg-white px-4 text-base text-brand-900
-           outline-none focus:border-accent focus:ring-2 focus:ring-accent/25 placeholder:text-brand-300;
+  /* --- Formlar --- */
+  .input, .select, .textarea {
+    @apply w-full rounded-lg border border-line bg-white px-3.5 text-[15px] text-brand-900 outline-none
+           transition placeholder:text-brand-300
+           focus:border-accent focus:ring-2 focus:ring-accent/20;
+    min-height: 2.75rem;
   }
-  .field-label { @apply text-sm font-medium text-brand-500 mb-1 block; }
+  .textarea { @apply py-2.5; min-height: 5rem; }
+  .field-label { @apply mb-1.5 block text-[13px] font-medium text-brand-500; }
+  .field-hint  { @apply mt-1 text-xs text-brand-400; }
+
+  /* --- Rozetler --- */
+  .badge { @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold; }
+  .badge-owner  { @apply badge bg-accent/15 text-accent-800; }
+  .badge-member { @apply badge bg-brand-100 text-brand-600; }
+  .badge-viewer { @apply badge bg-mist text-brand-500; }
 
   .chip { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold; }
   .chip-full  { @apply chip bg-green-100 text-green-800; }
   .chip-low   { @apply chip bg-amber-100 text-amber-800; }
   .chip-empty { @apply chip bg-red-100 text-red-700; }
 
-  /* Konum kodu — aramanın cevabı; en büyük eleman (PRD §5.3) */
-  .loc-code { @apply font-mono font-extrabold tracking-tight text-brand-700; }
+  /* --- Kenar çubuğu gezinme öğesi --- */
+  .navitem {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors;
+  }
+
+  /* --- Bölüm başlığı --- */
+  .section-title { @apply text-[13px] font-semibold uppercase tracking-wide text-brand-400; }
+
+  /* Konum kodu — aramanın cevabı, en büyük eleman */
+  .loc-code { @apply font-mono font-bold tracking-tight text-brand-800; }
+
+  /* Liste satırı */
+  .row { @apply flex items-center gap-3 border-b border-line py-3 last:border-0; }
 }
 
-/* Yazdırma (etiketler) */
 @media print {
   .no-print { display: none !important; }
   body { background: #fff; }

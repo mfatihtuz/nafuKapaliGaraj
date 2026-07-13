@@ -58,3 +58,42 @@ export const IconWifiOff = (p: P) => (
 export const IconGlobe = (p: P) => (
   <svg {...base(p)}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z" /></svg>
 )
+export const IconUsers = (p: P) => (
+  <svg {...base(p)}><path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="3.5" /><path d="M22 20v-2a4 4 0 0 0-3-3.87M16 3.5a4 4 0 0 1 0 7" /></svg>
+)
+export const IconUser = (p: P) => (
+  <svg {...base(p)}><path d="M19 20a7 7 0 0 0-14 0" /><circle cx="12" cy="8" r="4" /></svg>
+)
+export const IconBuilding = (p: P) => (
+  <svg {...base(p)}><path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 9h2a2 2 0 0 1 2 2v10M4 21h18M8 7h2M8 11h2M8 15h2" /></svg>
+)
+export const IconKey = (p: P) => (
+  <svg {...base(p)}><circle cx="7.5" cy="15.5" r="4.5" /><path d="m10.5 12.5 8-8M17 7l2 2M15 9l1.5 1.5" /></svg>
+)
+export const IconShield = (p: P) => (
+  <svg {...base(p)}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></svg>
+)
+export const IconFolder = (p: P) => (
+  <svg {...base(p)}><path d="M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 2.5h9a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2Z" /></svg>
+)
+export const IconLayers = (p: P) => (
+  <svg {...base(p)}><path d="m12 2 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 17l9 5 9-5" /></svg>
+)
+export const IconChevronDown = (p: P) => (
+  <svg {...base(p)}><path d="m6 9 6 6 6-6" /></svg>
+)
+export const IconLogout = (p: P) => (
+  <svg {...base(p)}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></svg>
+)
+export const IconX = (p: P) => (
+  <svg {...base(p)}><path d="M18 6 6 18M6 6l12 12" /></svg>
+)
+export const IconDatabase = (p: P) => (
+  <svg {...base(p)}><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg>
+)
+export const IconSliders = (p: P) => (
+  <svg {...base(p)}><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" /></svg>
+)
+export const IconMenu = (p: P) => (
+  <svg {...base(p)}><path d="M3 6h18M3 12h18M3 18h18" /></svg>
+)

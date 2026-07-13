@@ -1,121 +1,87 @@
-import { useLiveQuery } from 'dexie-react-hooks'
+import { useState, type ComponentType } from 'react'
 import { AppHeader, Container } from '../components/Layout'
-import { db } from '../db/dexie'
 import { useAuth } from '../auth/AuthContext'
-import { useT, LANGS } from '../i18n'
-import { useSyncStatus } from '../sync/useSync'
-import { useOutboxCount } from '../db/queries'
-import { engine } from '../sync/engine'
-import { getSyncErrors, clearSyncErrors, type SyncErrorLog } from '../sync/outbox'
-import { formatDateTime } from '../lib/format'
-import { IconSync, IconGlobe } from '../components/icons'
+import { useT } from '../i18n'
+import {
+  IconUser, IconKey, IconUsers, IconBuilding, IconFolder, IconTag, IconSliders, IconLogout,
+} from '../components/icons'
+import { AccountSection } from '../components/settings/AccountSection'
+import { SecuritySection } from '../components/settings/SecuritySection'
+import { UsersSection } from '../components/settings/UsersSection'
+import { OrgSection } from '../components/settings/OrgSection'
+import { LabelsSection } from '../components/settings/LabelsSection'
+import { CategoriesSection } from '../components/settings/CategoriesSection'
+import { SystemSection } from '../components/settings/SystemSection'
 
-async function exportData() {
-  const [parts, locations, categories, stock, transactions] = await Promise.all([
-    db.parts.toArray(), db.locations.toArray(), db.categories.toArray(),
-    db.stock.toArray(), db.transactions.toArray(),
-  ])
-  const blob = new Blob(
-    [JSON.stringify({ exported_at: new Date().toISOString(), parts, locations, categories, stock, transactions }, null, 2)],
-    { type: 'application/json' },
-  )
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `depo-yedek-${new Date().toISOString().slice(0, 10)}.json`
-  a.click()
-  URL.revokeObjectURL(a.href)
+interface Section {
+  key: string
+  Icon: ComponentType<{ size?: number }>
+  owner?: boolean
 }
 
+const SECTIONS: Section[] = [
+  { key: 'account', Icon: IconUser },
+  { key: 'security', Icon: IconKey },
+  { key: 'users', Icon: IconUsers, owner: true },
+  { key: 'org', Icon: IconBuilding, owner: true },
+  { key: 'categories', Icon: IconFolder },
+  { key: 'labels', Icon: IconTag, owner: true },
+  { key: 'system', Icon: IconSliders },
+]
+
 export function Settings() {
-  const { t, lang, setLang } = useT()
+  const { t } = useT()
   const { auth, logout } = useAuth()
-  const status = useSyncStatus()
-  const pending = useOutboxCount()
-  const errors = useLiveQuery(async () => getSyncErrors(), [], [] as SyncErrorLog[])
-  const partCount = useLiveQuery(() => db.parts.filter((p) => !p.deleted_at).count(), [], 0)
-  const locCount = useLiveQuery(() => db.locations.filter((l) => !l.deleted_at).count(), [], 0)
+  const isOwner = auth?.role === 'owner'
+  const canWrite = auth?.role === 'owner' || auth?.role === 'member'
+  const sections = SECTIONS.filter((s) => !s.owner || isOwner)
+  const [active, setActive] = useState('account')
+
+  function renderSection() {
+    switch (active) {
+      case 'account': return <AccountSection />
+      case 'security': return <SecuritySection />
+      case 'users': return <UsersSection />
+      case 'org': return <OrgSection />
+      case 'labels': return <LabelsSection />
+      case 'categories': return <CategoriesSection canWrite={canWrite} />
+      case 'system': return <SystemSection />
+      default: return null
+    }
+  }
 
   return (
     <>
-      <AppHeader />
-      <Container>
-        <h1 className="mb-3 text-lg font-bold text-brand-800">{t('settings.title')}</h1>
-
-        {/* Hesap */}
-        <section className="card mb-3 p-4">
-          <div className="field-label">{t('settings.account')}</div>
-          <div className="text-sm text-brand-700">{auth?.user.display_name}</div>
-          <div className="text-xs text-brand-400">{auth?.user.email} · {auth?.role}</div>
-          <div className="mt-1 text-xs text-brand-400">{auth?.tenant.name}</div>
-          <p className="mt-3 text-xs text-brand-400">
-            {t('settings.counts', { parts: partCount, locations: locCount })}
-          </p>
-        </section>
-
-        {/* Dil */}
-        <section className="card mb-3 p-4">
-          <div className="field-label flex items-center gap-1"><IconGlobe size={14} /> {t('settings.language')}</div>
-          <div className="flex gap-1.5">
-            {LANGS.map((l) => (
+      <AppHeader title={t('settings.title')} />
+      <Container wide>
+        <div className="lg:grid lg:grid-cols-[220px_1fr] lg:gap-8">
+          {/* Bölüm gezinme */}
+          <nav className="mb-4 lg:mb-0">
+            <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:gap-1 lg:overflow-visible">
+              {sections.map(({ key, Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => setActive(key)}
+                  className={`navitem shrink-0 whitespace-nowrap ${
+                    active === key ? 'bg-white text-brand-800 shadow-sm ring-1 ring-line lg:ring-0 lg:bg-brand-50' : 'text-brand-500 hover:bg-white/60'
+                  }`}
+                >
+                  <Icon size={18} />
+                  {t(`settings.sections.${key}`)}
+                </button>
+              ))}
               <button
-                key={l}
-                onClick={() => setLang(l)}
-                className={`btn flex-1 uppercase ${lang === l ? 'bg-brand text-white' : 'bg-brand-50 text-brand-500'}`}
+                onClick={() => void logout()}
+                className="navitem shrink-0 whitespace-nowrap text-red-600 hover:bg-red-50 lg:mt-2"
               >
-                {l}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* Senkronizasyon */}
-        <section className="card mb-3 p-4">
-          <div className="field-label">{t('settings.sync')}</div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-brand-500">{t('settings.pending_ops')}</span>
-            <span className="font-semibold">{pending}</span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-brand-500">{t('settings.last_sync')}</span>
-            <span>{status.lastSyncAt ? formatDateTime(new Date(status.lastSyncAt).toISOString()) : '—'}</span>
-          </div>
-          <button
-            onClick={() => void engine.sync()}
-            disabled={!status.online}
-            className="btn-navy mt-3 w-full"
-          >
-            <IconSync size={18} className={status.syncing ? 'animate-spin' : ''} />
-            {t('settings.force_sync')}
-          </button>
-
-          {errors.length > 0 && (
-            <div className="mt-3">
-              <div className="field-label text-red-600">{t('settings.errors')}</div>
-              <ul className="max-h-40 overflow-auto text-xs text-red-700">
-                {errors.map((e) => (
-                  <li key={e.op_id} className="border-b border-red-100 py-1">
-                    <span className="font-medium">{e.type}</span> — {e.message}
-                  </li>
-                ))}
-              </ul>
-              <button onClick={() => void clearSyncErrors()} className="btn-ghost mt-2 w-full text-sm">
-                {t('settings.clear_errors')}
+                <IconLogout size={18} /> {t('auth.logout')}
               </button>
             </div>
-          )}
-        </section>
+          </nav>
 
-        {/* Veri */}
-        <section className="card mb-3 p-4">
-          <div className="field-label">{t('settings.export')}</div>
-          <button onClick={() => void exportData()} className="btn-ghost w-full">
-            {t('settings.export')}
-          </button>
-        </section>
-
-        <button onClick={() => void logout()} className="btn-danger w-full">
-          {t('settings.danger')}
-        </button>
+          {/* İçerik */}
+          <div className="min-w-0">{renderSection()}</div>
+        </div>
       </Container>
     </>
   )

@@ -131,7 +131,7 @@ export interface TenantInfo {
 }
 
 export interface AuthState {
-  user: { id: string; email: string; display_name: string }
+  user: { id: string; email: string | null; username?: string | null; display_name: string }
   tenant: TenantInfo
   role: 'owner' | 'member' | 'viewer'
 }
