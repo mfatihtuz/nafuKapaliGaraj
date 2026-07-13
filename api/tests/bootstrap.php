@@ -50,8 +50,9 @@ function make_test_db(): array
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now'))
     );
     CREATE TABLE sync_ops (
-      op_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL,
-      applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now'))
+      op_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
+      applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now')),
+      PRIMARY KEY (tenant_id, op_id)
     );
     CREATE TABLE categories (
       id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, parent_id TEXT NULL, name_tr TEXT NOT NULL,

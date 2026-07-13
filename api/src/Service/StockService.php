@@ -7,7 +7,6 @@ use Depo\Core\Db;
 use Depo\Core\HttpException;
 use Depo\Repository\StockRepository;
 use Depo\Repository\TransactionRepository;
-use Depo\Support\Time;
 
 /**
  * Hareket uygula → stok türet (SPRINT_PLAN 1.5).
@@ -21,8 +20,9 @@ final class StockService
     public function __construct(
         private readonly Db $db,
         private readonly string $tenantId,
+        int $clockSkewMinutes = 5,
     ) {
-        $this->txRepo = new TransactionRepository($db, $tenantId);
+        $this->txRepo = new TransactionRepository($db, $tenantId, $clockSkewMinutes);
         $this->stockRepo = new StockRepository($db, $tenantId);
     }
 
@@ -41,7 +41,9 @@ final class StockService
         }
 
         $tx = $this->txRepo->append($data, $actorId);
-        $createdAt = Time::isoToMysql(is_string($data['created_at'] ?? null) ? $data['created_at'] : null);
+        // Stok türetmesi, deftere yazılan KANONİK (clamp'li) created_at'i kullanır —
+        // ledger ile stok.level_at/last_move_at aynı zaman kaynağından beslenir.
+        $createdAt = (string) $tx['created_at'];
 
         $partId = (string) $tx['part_id'];
         $locationId = (string) $tx['location_id'];
@@ -69,12 +71,17 @@ final class StockService
         if ($partId === '' || $locationId === '') {
             throw HttpException::unprocessable('audit için part_id ve location_id gerekli');
         }
-        if (!array_key_exists('counted_qty', $data)) {
-            throw HttpException::unprocessable('audit için counted_qty gerekli');
+        // counted_qty sayısal ve negatif olmamalı — null/geçersiz değer stoğu 0'a silmesin.
+        if (!isset($data['counted_qty']) || !is_numeric($data['counted_qty'])) {
+            throw HttpException::unprocessable('audit için sayısal counted_qty gerekli');
+        }
+        $counted = (float) $data['counted_qty'];
+        if ($counted < 0) {
+            throw HttpException::unprocessable('counted_qty negatif olamaz');
         }
 
         $current = $this->stockRepo->getQty($partId, $locationId);
-        $delta = (float) $data['counted_qty'] - $current;
+        $delta = $counted - $current;
 
         return $this->applyMove([
             'id'          => $data['id'] ?? null,

@@ -4,7 +4,7 @@ import { AppHeader, Container } from '../components/Layout'
 import { useCategories, useLocations } from '../db/queries'
 import { AttributeForm } from '../components/AttributeForm'
 import type { Category, Part, PartAttributes, StockLevel } from '../db/types'
-import { buildSku } from '../lib/sku'
+import { buildSku, skuKeys } from '../lib/sku'
 import { normalize } from '../lib/normalize'
 import { uuidv7 } from '../lib/uuid'
 import { db } from '../db/dexie'
@@ -50,6 +50,19 @@ export function Intake() {
   const sku = category ? buildSku(category.sku_template, attrs) : ''
   const locationMatch = locations.find((l) => l.code.toUpperCase() === locCode.trim().toUpperCase())
   const mode = category?.default_count_mode ?? 'exact'
+
+  // Kaydetme için zorunlu alanlar: SKU şablonundaki tüm {key}'ler + required öznitelikler dolu olmalı.
+  const requiredKeys = category
+    ? new Set<string>([
+        ...skuKeys(category.sku_template),
+        ...(category.attribute_schema ?? []).filter((d) => d.required).map((d) => d.key),
+      ])
+    : new Set<string>()
+  const attrsComplete = [...requiredKeys].every((k) => {
+    const v = attrs[k]
+    return v !== undefined && v !== null && String(v).trim() !== ''
+  })
+  const levelOk = mode !== 'level' || level !== null
 
   function resetPart() {
     setAttrs({})
@@ -98,9 +111,9 @@ export function Intake() {
       if (mode === 'exact') {
         const n = Number(qty)
         await moveStock({ partId, locationId: locationMatch.id, delta: Number.isFinite(n) ? n : 0, reason: 'initial' })
-      } else if (mode === 'level') {
-        await setLevel(partId, locationMatch.id, level ?? 'full')
-      } else {
+      } else if (mode === 'level' && level) {
+        await setLevel(partId, locationMatch.id, level)
+      } else if (mode === 'unmanaged') {
         // unmanaged: konum ilişkisini kur (delta 0)
         await moveStock({ partId, locationId: locationMatch.id, delta: 0, reason: 'initial' })
       }
@@ -112,7 +125,7 @@ export function Intake() {
     }
   }
 
-  const canSave = !!category && !!locationMatch && !!sku && !busy
+  const canSave = !!category && !!locationMatch && !!sku && attrsComplete && levelOk && !busy
 
   return (
     <>
@@ -127,7 +140,7 @@ export function Intake() {
             {selectable.map((c) => (
               <button
                 key={c.id}
-                onClick={() => { setCatId(c.id); setAttrs({}) }}
+                onClick={() => { setCatId(c.id); setAttrs({}); setLvl(null); setQty('') }}
                 className={`chip min-h-[40px] px-3 ${
                   catId === c.id ? 'bg-accent text-brand-900' : 'bg-brand-50 text-brand-600'
                 }`}

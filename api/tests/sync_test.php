@@ -283,4 +283,83 @@ fwrite(STDOUT, "\nTEST 11 — pull: since'den sonraki değişiklikleri sırayla 
     eq(count($pull2['changes']), 0, 'cursor sonrası değişiklik yok');
 }
 
+fwrite(STDOUT, "\nTEST 12 — sync_ops tenant izolasyonu: A ve B aynı op_id'yi kullanır, ikisi de uygulanır\n");
+{
+    [$db] = make_test_db();
+    $tA = seed_tenant($db, 'Atolye A12');
+    $tB = seed_tenant($db, 'Atolye B12');
+    $svcA = new SyncService($db, $tA['tenant_id'], $tA['user_id']);
+    $svcB = new SyncService($db, $tB['tenant_id'], $tB['user_id']);
+
+    $sharedOpId = Uuid::v7();
+    $idsA = scaffold($svcA);
+    $svcA->push([opMove($idsA['part_id'], $idsA['location_id'], 5, 'purchase', iso(1), $sharedOpId)]);
+
+    // B AYNI op_id ile farklı bir op (part upsert) push eder
+    $partB = Uuid::v7();
+    $resB = $svcB->push([[
+        'op_id' => $sharedOpId, 'type' => 'upsert', 'entity' => 'part',
+        'data' => ['id' => $partB, 'sku' => 'B-12', 'name' => 'B parça', 'count_mode' => 'exact', 'updated_at' => iso(1)],
+    ]]);
+    eq(count($resB['applied']), 1, "B'nin op'u uygulandı (A'nın op_id'si engellemedi)");
+    $seen = false;
+    foreach ($svcB->bootstrap()['parts'] as $p) {
+        if ($p['id'] === $partB) $seen = true;
+    }
+    check($seen, "B'nin parçası gerçekten oluştu (sessiz kayıp yok)");
+}
+
+fwrite(STDOUT, "\nTEST 13 — eski (sıra dışı) silme, daha yeni düzenlemeyi ezmez (LWW)\n");
+{
+    [$db] = make_test_db();
+    $t = seed_tenant($db);
+    $svc = new SyncService($db, $t['tenant_id'], $t['user_id']);
+    $partId = Uuid::v7();
+    $svc->push([opUpsertPart(['id' => $partId, 'sku' => 'Z-1', 'name' => 'Eski', 'count_mode' => 'exact', 'updated_at' => iso(0)])]);
+    // Daha yeni düzenleme
+    $svc->push([opUpsertPart(['id' => $partId, 'sku' => 'Z-1', 'name' => 'Yeni', 'count_mode' => 'exact', 'updated_at' => iso(20)])]);
+    // Eski (sıra dışı) silme — iso(10) < iso(20)
+    $svc->push([['op_id' => Uuid::v7(), 'type' => 'delete', 'entity' => 'part', 'data' => ['id' => $partId, 'updated_at' => iso(10)]]]);
+
+    $row = $db->one('SELECT name, deleted_at, updated_at FROM parts WHERE id = :id', ['id' => $partId]);
+    check(($row['deleted_at'] ?? null) === null, 'eski silme yok sayıldı (parça silinmedi)');
+    eq($row['name'] ?? null, 'Yeni', 'daha yeni düzenleme korundu');
+    check(str_starts_with((string) $row['updated_at'], substr(iso(20), 0, 4)), 'updated_at geri gitmedi');
+}
+
+fwrite(STDOUT, "\nTEST 14 — audit: null/geçersiz counted_qty stoğu silmez, reddedilir\n");
+{
+    [$db] = make_test_db();
+    $t = seed_tenant($db);
+    $svc = new SyncService($db, $t['tenant_id'], $t['user_id']);
+    $ids = scaffold($svc);
+    $svc->push([opMove($ids['part_id'], $ids['location_id'], 100, 'initial', iso(1))]);
+
+    $res = $svc->push([['op_id' => Uuid::v7(), 'type' => 'stock_audit',
+        'data' => ['part_id' => $ids['part_id'], 'location_id' => $ids['location_id'], 'counted_qty' => null, 'created_at' => iso(5)]]]);
+    eq(count($res['rejected']), 1, 'null counted_qty reddedildi');
+    eq($res['rejected'][0]['reason'] ?? '', 'unprocessable', 'red sebebi unprocessable');
+    eq(currentQty($svc, $ids['part_id'], $ids['location_id']), 100.0, 'stok 0a silinmedi (100 kaldı)');
+}
+
+fwrite(STDOUT, "\nTEST 15 — gelecek-tarihli level olayı clamp'lenir (kalıcı kilitlenmez)\n");
+{
+    [$db] = make_test_db();
+    $t = seed_tenant($db);
+    $svc = new SyncService($db, $t['tenant_id'], $t['user_id']);
+    $partId = Uuid::v7();
+    $locId = Uuid::v7();
+    $svc->push([
+        opUpsertLocation(['id' => $locId, 'code' => 'B1-09', 'type' => 'drawer', 'path' => 'GARAJ/B1/B1-09', 'updated_at' => iso(0)]),
+        opUpsertPart(['id' => $partId, 'sku' => 'C-FUT', 'name' => 'gelecek', 'count_mode' => 'level', 'updated_at' => iso(0)]),
+    ]);
+    // Çok ileri tarihli 'empty'
+    $svc->push([['op_id' => Uuid::v7(), 'type' => 'stock_move',
+        'data' => ['id' => Uuid::v7(), 'part_id' => $partId, 'location_id' => $locId, 'level_to' => 'empty', 'reason' => 'adjust', 'created_at' => '2035-01-01T00:00:00.000Z']]]);
+
+    $row = $db->one('SELECT level, level_at FROM stock WHERE part_id = :p', ['p' => $partId]);
+    eq($row['level'] ?? null, 'empty', 'level yazıldı');
+    check(strpos((string) $row['level_at'], '2035') === false, 'level_at 2035 değil — geleceğe-karşı clamp uygulandı');
+}
+
 exit(test_summary());

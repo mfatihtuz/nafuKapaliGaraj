@@ -30,6 +30,11 @@ class SyncEngine {
   private runQueued = false
   private started = false
 
+  // İsimli dinleyiciler — stop()'ta kaldırılabilsin (birikmeyi önle).
+  private onOnline = () => { this.emit({ online: true }); void this.sync() }
+  private onOffline = () => this.emit({ online: false })
+  private onVisible = () => { if (document.visibilityState === 'visible') void this.sync() }
+
   getStatus(): SyncStatus {
     return { ...this.status }
   }
@@ -50,14 +55,9 @@ class SyncEngine {
     if (this.started) return
     this.started = true
 
-    window.addEventListener('online', () => {
-      this.emit({ online: true })
-      void this.sync()
-    })
-    window.addEventListener('offline', () => this.emit({ online: false }))
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') void this.sync()
-    })
+    window.addEventListener('online', this.onOnline)
+    window.addEventListener('offline', this.onOffline)
+    document.addEventListener('visibilitychange', this.onVisible)
     // Her 5 dakikada bir (online ve ön plandaysa)
     this.intervalTimer = setInterval(() => {
       if (this.status.online && document.visibilityState === 'visible') void this.sync()
@@ -67,8 +67,13 @@ class SyncEngine {
   }
 
   stop(): void {
+    window.removeEventListener('online', this.onOnline)
+    window.removeEventListener('offline', this.onOffline)
+    document.removeEventListener('visibilitychange', this.onVisible)
     if (this.intervalTimer) clearInterval(this.intervalTimer)
     this.intervalTimer = null
+    if (this.debounceTimer) clearTimeout(this.debounceTimer)
+    this.debounceTimer = null
     this.started = false
   }
 

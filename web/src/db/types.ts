@@ -103,6 +103,7 @@ export interface Transaction {
 export type OutboxType = 'upsert' | 'delete' | 'stock_move' | 'stock_audit'
 
 export interface OutboxOp {
+  seq?: number // ++auto-increment — kuyruk sırasını KARARLI tutar (Date.now() eşitliklerine karşı)
   op_id: string
   type: OutboxType
   entity?: 'part' | 'location' | 'category'

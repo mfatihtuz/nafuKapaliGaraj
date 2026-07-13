@@ -83,7 +83,7 @@ abstract class BaseRepository
         }
         $table = $this->table();
         $existing = $this->db->one(
-            "SELECT tenant_id FROM {$table} WHERE id = :id",
+            "SELECT tenant_id, updated_at FROM {$table} WHERE id = :id",
             ['id' => $id]
         );
         if ($existing === null) {
@@ -92,11 +92,16 @@ abstract class BaseRepository
         if ((string) $existing['tenant_id'] !== $this->tenantId) {
             throw HttpException::notFound();
         }
+        // LWW: yalnızca silme, mevcut updated_at'ten yeniyse uygulanır (SYNC_PROTOCOL §2A).
+        // Eski (sıra dışı) bir silme, daha yeni bir düzenlemeyi ezmemeli; updated_at geri gitmez.
         $ts = Time::clampUpdatedAt($updatedAtIso, $this->clockSkewMinutes);
-        $this->db->run(
-            "UPDATE {$table} SET deleted_at = :ts, updated_at = :ts2 WHERE id = :id AND tenant_id = :tid",
-            ['ts' => $ts, 'ts2' => $ts, 'id' => $id, 'tid' => $this->tenantId]
-        );
+        if (Time::gt($ts, (string) $existing['updated_at'])) {
+            $this->db->run(
+                "UPDATE {$table} SET deleted_at = :ts, updated_at = :ts2 WHERE id = :id AND tenant_id = :tid",
+                ['ts' => $ts, 'ts2' => $ts, 'id' => $id, 'tid' => $this->tenantId]
+            );
+        }
+        // else: gelen silme daha eski → yok say (kanonik satırı olduğu gibi döndür).
         return $this->findRaw($id);
     }
 
@@ -178,12 +183,12 @@ abstract class BaseRepository
         return $value;
     }
 
-    /** Ham satır (payload için — JSON alanlar decode edilmez, olduğu gibi). */
+    /** Kanonik satır (change_log payload'ı için). Tenant kapsamı zorunlu (savunma-derinliği). */
     protected function findRaw(string $id): array
     {
         $row = $this->db->one(
-            'SELECT * FROM ' . $this->table() . ' WHERE id = :id',
-            ['id' => $id]
+            'SELECT * FROM ' . $this->table() . ' WHERE id = :id AND tenant_id = :tid',
+            ['id' => $id, 'tid' => $this->tenantId]
         );
         return $row === null ? [] : $this->hydrate($row);
     }

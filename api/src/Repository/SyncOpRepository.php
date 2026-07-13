@@ -18,7 +18,11 @@ final class SyncOpRepository
 
     public function exists(string $opId): bool
     {
-        $row = $this->db->one('SELECT 1 AS x FROM sync_ops WHERE op_id = :id', ['id' => $opId]);
+        // Tenant kapsamı zorunlu: idempotency anahtar uzayı tenant'lar arasında paylaşılmaz.
+        $row = $this->db->one(
+            'SELECT 1 AS x FROM sync_ops WHERE tenant_id = :tid AND op_id = :id',
+            ['tid' => $this->tenantId, 'id' => $opId]
+        );
         return $row !== null;
     }
 

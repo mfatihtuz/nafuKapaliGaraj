@@ -22,7 +22,9 @@ export class DepoDB extends Dexie {
       categories: 'id, code, parent_id, sort_order, updated_at',
       stock: 'key, part_id, location_id',
       transactions: 'id, part_id, location_id, created_at',
-      outbox: 'op_id, created_at',
+      // ++seq: kararlı FIFO sıralama (aynı ms'de eklenen part-upsert + stock_move
+      // yeniden sıralanıp sunucuda "parça yok" reddine yol açmasın).
+      outbox: '++seq, &op_id, created_at',
       meta: 'key',
     })
   }

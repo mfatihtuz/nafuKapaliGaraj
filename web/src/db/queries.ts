@@ -17,8 +17,13 @@ export function useParts(): Part[] {
   )
 }
 
-export function usePart(id: string | undefined): Part | undefined {
-  return useLiveQuery(() => (id ? db.parts.get(id) : undefined), [id])
+/** undefined = yükleniyor · null = bulunamadı/silinmiş · Part = aktif. */
+export function usePart(id: string | undefined): Part | null | undefined {
+  return useLiveQuery(async () => {
+    if (!id) return null
+    const p = await db.parts.get(id)
+    return p && !p.deleted_at ? p : null
+  }, [id])
 }
 
 export function useCategories(): Category[] {
@@ -81,7 +86,7 @@ export function useLocationsForPart(partId: string | undefined): StockWithLocati
       const out: StockWithLocation[] = []
       for (const stock of rows) {
         const location = await db.locations.get(stock.location_id)
-        if (location) out.push({ stock, location })
+        if (location && !location.deleted_at) out.push({ stock, location })
       }
       return out
     },
@@ -118,7 +123,7 @@ export function useSearch(query: string, includeQuarantine = false): SearchHit[]
         const places: StockWithLocation[] = []
         for (const stock of stockRows) {
           const location = await db.locations.get(stock.location_id)
-          if (!location) continue
+          if (!location || location.deleted_at) continue
           if (!includeQuarantine && location.type === 'quarantine') continue
           places.push({ stock, location })
         }

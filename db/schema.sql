@@ -70,9 +70,12 @@ CREATE TABLE change_log (
 
 -- Idempotency: aynı op_id iki kez uygulanmaz
 CREATE TABLE sync_ops (
-  op_id      CHAR(36)    NOT NULL PRIMARY KEY,
+  op_id      CHAR(36)    NOT NULL,
   tenant_id  CHAR(36)    NOT NULL,
   applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  -- Idempotency anahtarı tenant'a özeldir: farklı tenant'lar aynı op_id'yi
+  -- (kötü niyetle bile) kullansa çakışmaz ve birbirinin op'unu atlatamaz.
+  PRIMARY KEY (tenant_id, op_id),
   KEY idx_so_tenant (tenant_id, applied_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

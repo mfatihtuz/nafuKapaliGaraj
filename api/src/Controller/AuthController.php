@@ -45,8 +45,9 @@ final class AuthController
 
     public function logout(Request $req, Response $res, array $params, ?Context $ctx): void
     {
-        $token = $req->cookie($this->cookieName());
-        if ($token !== null) {
+        // Cookie veya Authorization: Bearer ile gelen oturumu sunucuda geçersiz kıl.
+        $token = $req->bearerOrCookie($this->cookieName());
+        if ($token !== null && $token !== '') {
             $this->auth->logout($token);
         }
         $res->clearCookie($this->cookieName(), $this->cookiePath());

@@ -58,6 +58,29 @@ export async function applyTx(raw: Transaction): Promise<void> {
   })
 }
 
+/**
+ * Kalıcı reddedilen optimistik bir hareketi geri alır (SYNC_PROTOCOL §5.4):
+ * defter kaydını sil ve delta'yı stoktan düş. Böylece red sonrası yerel stok
+ * sunucudan sonsuza dek sapmaz.
+ * (Not: level hareketleri tersine çevrilemez — önceki durum kayıp; nadir bu durumda
+ *  bir sonraki bootstrap/checksum sunucu doğrusunu geri yükler.)
+ */
+export async function revertTx(txId: string): Promise<void> {
+  await db.transaction('rw', db.transactions, db.stock, async () => {
+    const tx = await db.transactions.get(txId)
+    if (!tx) return
+    await db.transactions.delete(txId)
+    if (tx.delta !== null && tx.delta !== undefined) {
+      const key = stockKey(tx.part_id, tx.location_id)
+      const cur = await db.stock.get(key)
+      if (cur) {
+        cur.qty = num(cur.qty) - num(tx.delta)
+        await db.stock.put(cur)
+      }
+    }
+  })
+}
+
 /** Sunucudan gelen ham tx payload'ını yerel Transaction tipine eşler (sayısal alanları düzeltir). */
 export function mapTx(p: Record<string, unknown>): Transaction {
   return {

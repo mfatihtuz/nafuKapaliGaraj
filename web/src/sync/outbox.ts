@@ -6,9 +6,12 @@ import { db, metaGet, metaSet } from '../db/dexie'
 import type { OutboxOp, OutboxType } from '../db/types'
 import { uuidv7 } from '../lib/uuid'
 import { api } from './api'
+import { revertTx } from './derive'
 
 // Yeniden denemesi anlamsız (kalıcı) red sebepleri — sonsuz döngüyü önler.
 const PERMANENT = new Set(['unprocessable', 'not_found', 'forbidden', 'bad_request', 'invalid_op_id'])
+// Geçici hata bu sayıya ulaşınca kalıcı sayılır (db_error gibi çözülmeyen kısıt ihlalleri).
+const MAX_ATTEMPTS = 8
 
 const SYNC_ERRORS = 'sync_errors'
 
@@ -20,7 +23,7 @@ export interface SyncErrorLog {
   at: number
 }
 
-/** Bir op'u kuyruğa yaz. op_id verilmezse üretilir. */
+/** Bir op'u kuyruğa yaz. op_id verilmezse üretilir. seq otomatik atanır (kararlı sıra). */
 export async function enqueue(input: {
   type: OutboxType
   entity?: 'part' | 'location' | 'category'
@@ -35,7 +38,7 @@ export async function enqueue(input: {
     created_at: Date.now(),
     attempts: 0,
   }
-  await db.outbox.put(op)
+  await db.outbox.add(op) // ++seq atanır
 }
 
 export async function pendingCount(): Promise<number> {
@@ -56,12 +59,20 @@ async function logErrors(errors: SyncErrorLog[]): Promise<void> {
   await metaSet(SYNC_ERRORS, [...errors, ...existing].slice(0, 100))
 }
 
-/**
- * Kuyruğu sunucuya push eder.
- * @returns applied / rejected sayıları.
- */
+/** Kalıcı reddedilen bir op'un yerel optimistik etkisini geri al. */
+async function revertLocal(op: OutboxOp): Promise<void> {
+  // stock_move (delta veya level) yerelde applyTx ile uygulanmıştı → geri al.
+  if (op.type === 'stock_move') {
+    const id = (op.data as { id?: string } | null)?.id
+    if (id) await revertTx(id)
+  }
+  // stock_audit: yerel optimistik etki yok. upsert/delete: katalog LWW bir sonraki
+  // bootstrap'ta düzelir (nadir kalıcı red).
+}
+
+/** Kuyruğu sunucuya push eder. @returns applied / rejected sayıları. */
 export async function pushOutbox(): Promise<{ applied: number; rejected: number; sent: number }> {
-  const ops = await db.outbox.orderBy('created_at').toArray()
+  const ops = await db.outbox.orderBy('seq').toArray()
   if (ops.length === 0) return { applied: 0, rejected: 0, sent: 0 }
 
   const payload = ops.map((o) => ({
@@ -73,27 +84,29 @@ export async function pushOutbox(): Promise<{ applied: number; rejected: number;
 
   const result = await api.push(payload) // ağ/401 hatasında throw → engine yakalar
 
-  // Uygulananları sil
   if (result.applied.length > 0) {
-    await db.outbox.bulkDelete(result.applied)
+    await db.outbox.where('op_id').anyOf(result.applied).delete()
   }
 
-  // Reddedilenleri işle
   const permanentErrors: SyncErrorLog[] = []
   for (const rej of result.rejected) {
     const op = ops.find((o) => o.op_id === rej.op_id)
     if (!op) continue
-    if (PERMANENT.has(rej.reason)) {
-      // Kalıcı hata: kuyruktan çıkar ama görünür şekilde logla (sessiz kayıp yok).
+    const attempts = op.attempts + 1
+    const permanent = PERMANENT.has(rej.reason) || attempts >= MAX_ATTEMPTS
+
+    if (permanent) {
+      // Görünür şekilde logla, yerel optimistik etkiyi geri al, kuyruktan çıkar.
       permanentErrors.push({
         op_id: op.op_id, type: op.type, reason: rej.reason,
         message: rej.message ?? rej.reason, at: Date.now(),
       })
-      await db.outbox.delete(op.op_id)
+      await revertLocal(op)
+      await db.outbox.where('op_id').equals(op.op_id).delete()
     } else {
-      // Geçici hata: dene sayısını artır, kuyrukta tut.
-      await db.outbox.update(op.op_id, {
-        attempts: op.attempts + 1,
+      // Geçici hata: dene sayısını artır, kuyrukta tut (bir sonraki turda tekrar).
+      await db.outbox.where('op_id').equals(op.op_id).modify({
+        attempts,
         last_error: rej.message ?? rej.reason,
       })
     }

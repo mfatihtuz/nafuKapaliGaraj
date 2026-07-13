@@ -43,35 +43,44 @@ final class SyncService
         $this->locations = new LocationRepository($db, $tenantId, $clockSkewMinutes);
         $this->categories = new CategoryRepository($db, $tenantId, $clockSkewMinutes);
         $this->stock = new StockRepository($db, $tenantId);
-        $this->tx = new TransactionRepository($db, $tenantId);
+        $this->tx = new TransactionRepository($db, $tenantId, $clockSkewMinutes);
         $this->changeLog = new ChangeLogRepository($db, $tenantId);
         $this->syncOps = new SyncOpRepository($db, $tenantId);
-        $this->stockService = new StockService($db, $tenantId);
+        $this->stockService = new StockService($db, $tenantId, $clockSkewMinutes);
     }
 
     // --- BOOTSTRAP (SYNC_PROTOCOL §5.1) -------------------------------------
 
-    /** @return array<string,mixed> */
+    /**
+     * @return array<string,mixed>
+     *
+     * Tüm okumalar TEK transaction içinde (InnoDB REPEATABLE READ → tutarlı snapshot):
+     * snapshot, ledger ve cursor aynı ana ait olur. Böylece bootstrap penceresinde
+     * commit edilen bir hareket ya snapshot'a girer ya da cursor'dan büyük seq ile
+     * pull'da gelir — asla kaybolmaz, asla iki kez sayılmaz.
+     */
     public function bootstrap(): array
     {
-        $tenant = $this->db->one(
-            'SELECT id, name, plan, locale, settings FROM tenants WHERE id = :id',
-            ['id' => $this->tenantId]
-        );
-        if ($tenant !== null && isset($tenant['settings']) && is_string($tenant['settings'])) {
-            $tenant['settings'] = json_decode($tenant['settings'], true);
-        }
+        return $this->db->transaction(function (): array {
+            $tenant = $this->db->one(
+                'SELECT id, name, plan, locale, settings FROM tenants WHERE id = :id',
+                ['id' => $this->tenantId]
+            );
+            if ($tenant !== null && isset($tenant['settings']) && is_string($tenant['settings'])) {
+                $tenant['settings'] = json_decode($tenant['settings'], true);
+            }
 
-        return [
-            'tenant'             => $tenant,
-            'categories'         => $this->categories->allActive(),
-            'locations'          => $this->locations->allActive(),
-            'parts'              => $this->parts->allActive(),
-            'stock_snapshot'     => $this->stock->snapshot(),
-            'stock_transactions' => $this->tx->recentForBootstrap(90),
-            'cursor'             => $this->changeLog->maxSeq(),
-            'server_time'        => Time::now(),
-        ];
+            return [
+                'tenant'             => $tenant,
+                'categories'         => $this->categories->allActive(),
+                'locations'          => $this->locations->allActive(),
+                'parts'              => $this->parts->allActive(),
+                'stock_snapshot'     => $this->stock->snapshot(),
+                'stock_transactions' => $this->tx->recentForBootstrap(90),
+                'cursor'             => $this->changeLog->maxSeq(),
+                'server_time'        => Time::now(),
+            ];
+        });
     }
 
     // --- PULL (SYNC_PROTOCOL §5.2) ------------------------------------------

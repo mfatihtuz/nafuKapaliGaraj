@@ -17,6 +17,7 @@ final class TransactionRepository
     public function __construct(
         private readonly Db $db,
         private readonly string $tenantId,
+        private readonly int $clockSkewMinutes = 5,
     ) {}
 
     /**
@@ -39,7 +40,9 @@ final class TransactionRepository
             throw HttpException::unprocessable('Geçersiz reason: ' . $reason);
         }
 
-        $createdAt = Time::isoToMysql(is_string($data['created_at'] ?? null) ? $data['created_at'] : null);
+        // created_at geleceğe-karşı sınırlanır (SYNC_PROTOCOL §7): geçmiş olaylar korunur,
+        // gelecekten gelen damgalar now()+skew ile kapanır — level LWW'yi kalıcı kilitlemesin.
+        $createdAt = Time::clampUpdatedAt(is_string($data['created_at'] ?? null) ? $data['created_at'] : null, $this->clockSkewMinutes);
 
         $delta = $data['delta'] ?? null;
         $levelTo = $data['level_to'] ?? null;

@@ -14,9 +14,14 @@ export function Scan() {
   const [error, setError] = useState<string | null>(null)
   const [manual, setManual] = useState('')
   const doneRef = useRef(false)
+  const cancelledRef = useRef(false)
 
   useEffect(() => {
-    return () => handleRef.current?.stop()
+    cancelledRef.current = false
+    return () => {
+      cancelledRef.current = true
+      handleRef.current?.stop()
+    }
   }, [])
 
   async function start() {
@@ -26,13 +31,19 @@ export function Scan() {
     if (!video) return
     try {
       setScanning(true)
-      handleRef.current = await startScanner(video, (text) => {
+      const handle = await startScanner(video, (text) => {
         if (doneRef.current) return
         doneRef.current = true
         handleRef.current?.stop()
         setScanning(false)
         navigate(`/l/${encodeURIComponent(extractLocationCode(text))}`)
       })
+      // await sırasında bileşen söküldüyse kamerayı hemen kapat (sızıntı önleme).
+      if (cancelledRef.current) {
+        handle.stop()
+        return
+      }
+      handleRef.current = handle
     } catch {
       setScanning(false)
       setError(t('scan.permission_denied'))

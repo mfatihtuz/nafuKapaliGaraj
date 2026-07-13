@@ -43,6 +43,22 @@ bkz. `docs/DEPLOY.md`).
 - FAZ 2-4 (AI tanıma, ek dosyalar, BOM/proje, ödünç, döngüsel sayım, ürünleştirme)
   — faz-kilitli; en az ~100 SKU girilmeden başlanmaz (SPRINT_PLAN).
 
+## Adversarial inceleme sonrası düzeltmeler
+5 boyutlu düşmanca inceleme + bağımsız doğrulama çalıştırıldı; 20 gerçek bulgu
+bulundu ve düzeltildi (data-integrity/güvenlik), her biri için regresyon testi eklendi:
+- softDelete LWW guard, bootstrap tutarlı-okuma (snapshot/cursor yarışı)
+- sync_ops tenant-scope (composite PK + exists tenant filtresi)
+- audit counted_qty doğrulaması, level created_at geleceğe-karşı clamp
+- istemci: outbox kararlı sıralama (++seq), reddedilen op'ta stok geri-alma,
+  deneme üst sınırı, engine dinleyici temizliği, silinen parça/konum filtreleri,
+  Intake zorunlu-alan doğrulaması, Scan kamera sızıntısı
+
+## Bilinçli ertelenenler (FAZ 4 / ürünleştirme — düşük öncelik)
+- Login/register **rate limiting** (IP+e-posta) — canlıda önerilir
+- **E-posta doğrulama** akışı (kayıt) — çoklu-tenant ürünleştirmede
+- Oturum **rotasyonu / idle timeout** — spec 90 gün cookie diyor (ARCHITECTURE §3),
+  mevcut davranış tasarıma uygun; sertleştirme ileride
+
 ## Bilinen sorunlar / notlar
 - `stock_audit`: istemci offline optimistik ledger kaydı ÜRETMEZ; sonuç sync turunda
   yansır (drift'e karşı sunucu-yetkili delta — SYNC_PROTOCOL §5.3). moveStock/setLevel
