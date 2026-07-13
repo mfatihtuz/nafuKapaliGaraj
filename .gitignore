@@ -1,0 +1,34 @@
+# === Gizli / ortam ===
+# ARCHITECTURE.md §8: config.php ASLA git'e girmez
+api/config.php
+config.php
+*.local
+
+# === PHP ===
+vendor/
+composer.lock
+
+# === Node / Vite (web/) ===
+node_modules/
+web/dist/
+dist/
+*.tsbuildinfo
+.vite/
+
+# === Yüklenen dosyalar & yedekler (webroot dışı, git dışı) ===
+storage/
+backups/
+*.gz
+
+# === Loglar ===
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# === Editör / OS ===
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
