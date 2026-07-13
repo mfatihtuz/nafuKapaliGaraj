@@ -69,6 +69,9 @@ export function CategoriesSection({ canWrite }: { canWrite: boolean }) {
   const roots = useMemo(() => categories.filter((c) => !c.parent_id), [categories])
   const childrenOf = (id: string) => categories.filter((c) => c.parent_id === id)
   const maxSort = categories.reduce((m, c) => Math.max(m, c.sort_order), 0)
+  const [open, setOpen] = useState<Set<string>>(() => new Set())
+  const toggle = (id: string) =>
+    setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
 
   async function save() {
     if (!draft) return
@@ -86,12 +89,23 @@ export function CategoriesSection({ canWrite }: { canWrite: boolean }) {
   }
 
   function Row({ c, depth }: { c: Category; depth: number }) {
+    const kids = childrenOf(c.id)
+    const isOpen = open.has(c.id)
     return (
       <>
-        <div className="row" style={{ paddingLeft: depth * 20 }}>
-          {depth > 0 && <IconChevronRight size={14} className="text-brand-300" />}
+        <div className="row" style={{ paddingLeft: depth * 18 }}>
+          {kids.length > 0 ? (
+            <button onClick={() => toggle(c.id)} className="btn-icon h-7 w-7 text-brand-400 hover:bg-canvas" aria-label="aç/kapa">
+              <IconChevronRight size={15} className={isOpen ? 'rotate-90 transition-transform' : 'transition-transform'} />
+            </button>
+          ) : (
+            <span className="w-7" />
+          )}
           <span className="badge bg-brand-50 font-mono text-brand-500">{c.code}</span>
-          <span className="min-w-0 flex-1 truncate font-medium text-brand-800">{c.name_tr}</span>
+          <button onClick={() => kids.length > 0 && toggle(c.id)} className="min-w-0 flex-1 truncate text-left font-medium text-brand-800">
+            {c.name_tr}
+            {kids.length > 0 && <span className="ml-2 text-xs font-normal text-brand-300">{kids.length}</span>}
+          </button>
           <span className="hidden text-xs text-brand-400 sm:inline">{t(`count_mode.${c.default_count_mode}`)}</span>
           {canWrite && (
             <>
@@ -107,7 +121,7 @@ export function CategoriesSection({ canWrite }: { canWrite: boolean }) {
             </>
           )}
         </div>
-        {childrenOf(c.id).map((ch) => <Row key={ch.id} c={ch} depth={depth + 1} />)}
+        {isOpen && kids.map((ch) => <Row key={ch.id} c={ch} depth={depth + 1} />)}
       </>
     )
   }

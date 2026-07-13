@@ -126,8 +126,20 @@ export interface TenantInfo {
   settings?: {
     qr_base_url?: string
     label_grid?: { w_mm: number; h_mm: number; cols: number; rows: number }
+    label_types?: LabelType[]
     default_count_mode?: CountMode
   } | null
+}
+
+/** Etiket tipi — kullanıcı tanımlı format + eldeki adet. */
+export interface LabelType {
+  id: string
+  name: string
+  w_mm: number
+  h_mm: number
+  cols: number
+  rows: number
+  qty: number
 }
 
 export interface AuthState {

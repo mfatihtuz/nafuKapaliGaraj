@@ -13,6 +13,7 @@
     "delete": "Sil",
     "add": "Ekle",
     "back": "Geri",
+    "next": "Devam",
     "loading": "Yükleniyor…",
     "retry": "Tekrar dene",
     "close": "Kapat",
@@ -175,13 +176,19 @@
       "saved": "Organizasyon güncellendi"
     },
     "labels_cfg": {
-      "title": "Etiket sayfası",
-      "w": "Etiket eni (mm)",
-      "h": "Etiket boyu (mm)",
+      "title": "Varsayılan etiket sayfası",
+      "w": "En (mm)",
+      "h": "Boy (mm)",
       "cols": "Sütun",
       "rows": "Satır",
       "qr_base": "QR adres tabanı",
-      "saved": "Etiket ayarları kaydedildi"
+      "saved": "Etiket ayarları kaydedildi",
+      "types": "Etiket tipleri",
+      "types_hint": "Farklı etiket formatları ve eldeki adetleri",
+      "add_type": "Tip ekle",
+      "type_name": "Tip adı (örn. Küçük 25×15)",
+      "qty": "Adet",
+      "no_types": "Henüz etiket tipi eklenmedi"
     },
     "categories": {
       "title": "Kategoriler",
