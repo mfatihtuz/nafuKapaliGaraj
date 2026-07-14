@@ -13,11 +13,15 @@ import { StockControl } from '../components/StockControl'
 import { useT } from '../i18n'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
-import { IconEdit, IconTrash, IconCheck, IconChevronRight, IconBack } from '../components/icons'
+import { IconEdit, IconTrash, IconCheck, IconMoveArrow } from '../components/icons'
+import { LocationPicker, resolveLeaf } from '../components/LocationPicker'
 
 const MODES: CountMode[] = ['exact', 'level', 'unmanaged']
 
-/** Bir konum satırı: kod + stok kontrolü + "Taşı" (başka çekmeceye). */
+/**
+ * Bir konum kartı: üstte kod + yol, sağda stok kontrolü, altında açık etiketli
+ * "Başka çekmeceye taşı" eylemi. (Eski tasarım: anlamı belirsiz "›" ikonuydu.)
+ */
 function LocationRow({
   part, stock, location, locations, canWrite,
 }: {
@@ -28,20 +32,11 @@ function LocationRow({
   const [moving, setMoving] = useState(false)
   const [dest, setDest] = useState('')
 
-  // Yalnızca yaprak konumlar (alt konumu olmayan çekmece/göz) hedef olabilir.
-  const childParentIds = new Set(locations.filter((l) => l.parent_id).map((l) => l.parent_id as string))
-  const storable = locations.filter((l) => !childParentIds.has(l.id))
+  const target = resolveLeaf(dest, locations)
+  const canMove = !!target && target.id !== location.id
 
   async function doMove() {
-    const target = locations.find((l) => l.code.toUpperCase() === dest.trim().toUpperCase())
-    if (!target) {
-      toast.show(t('scan.not_found', { code: dest }), 'error')
-      return
-    }
-    if (childParentIds.has(target.id)) {
-      toast.show(t('intake.location_is_group', { code: target.code }), 'error')
-      return
-    }
+    if (!target) return
     if (target.id === location.id) { setMoving(false); return }
     await movePartStock(part, location.id, target.id, stock)
     toast.show(t('part.moved', { code: target.code }), 'success')
@@ -50,44 +45,38 @@ function LocationRow({
   }
 
   return (
-    <div className="border-b border-line py-3 last:border-0">
+    <div className="rounded-xl border border-line bg-canvas/60 p-3">
       <div className="flex items-center justify-between gap-3">
-        <Link to={`/l/${encodeURIComponent(location.code)}`} className="loc-code text-xl">
-          {location.code}
-        </Link>
-        <div className="flex items-center gap-2">
-          <StockControl part={part} stock={stock} locationId={location.id} />
-          {canWrite && (
-            <button
-              onClick={() => setMoving((m) => !m)}
-              className="btn-icon h-9 w-9 text-brand-400 hover:bg-brand-50"
-              title={t('part.move')}
-            >
-              <IconChevronRight size={18} />
-            </button>
-          )}
+        <div className="min-w-0">
+          <Link to={`/l/${encodeURIComponent(location.code)}`} className="loc-code text-xl">
+            {location.code}
+          </Link>
+          <div className="truncate text-[11px] text-brand-300">{location.path}</div>
         </div>
+        <StockControl part={part} stock={stock} locationId={location.id} />
       </div>
+
+      {canWrite && !moving && (
+        <button
+          onClick={() => setMoving(true)}
+          className="mt-2 flex items-center gap-1.5 text-xs font-medium text-brand-500 hover:text-brand-800"
+        >
+          <IconMoveArrow size={14} /> {t('part.move_action')}
+        </button>
+      )}
+
       {moving && (
-        <div className="mt-2 flex items-center gap-2 rounded-lg bg-brand-50 p-2">
-          <input
-            list={`move-loc-${location.id}`}
-            value={dest}
-            onChange={(e) => setDest(e.target.value)}
-            placeholder={t('part.move_to')}
-            className="input h-9 flex-1 font-mono uppercase"
-            autoCapitalize="characters"
-          />
-          {/* id konum-bazlı: parça birden çok konumdaysa yinelenen id olmasın. */}
-          <datalist id={`move-loc-${location.id}`}>
-            {storable.map((l) => <option key={l.id} value={l.code}>{l.name ?? l.path}</option>)}
-          </datalist>
-          <button onClick={() => void doMove()} className="btn-primary h-9 px-3 text-sm">
-            {t('part.move')}
-          </button>
-          <button onClick={() => { setMoving(false); setDest('') }} className="btn-ghost h-9 px-2 text-sm">
-            <IconBack size={15} />
-          </button>
+        <div className="mt-3 rounded-lg border border-line bg-white p-3">
+          <div className="field-label">{t('part.move_to_label', { code: location.code })}</div>
+          <LocationPicker value={dest} onChange={setDest} locations={locations} autoFocus />
+          <div className="mt-2 flex justify-end gap-2">
+            <button onClick={() => { setMoving(false); setDest('') }} className="btn-ghost h-9 px-3 text-sm">
+              {t('common.cancel')}
+            </button>
+            <button onClick={() => void doMove()} disabled={!canMove} className="btn-primary h-9 px-4 text-sm">
+              <IconMoveArrow size={15} /> {t('part.move')}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -268,7 +257,7 @@ export function PartDetail() {
           {places.length === 0 ? (
             <p className="text-sm text-brand-300">{t('search.no_location')}</p>
           ) : (
-            <div className="flex flex-col">
+            <div className="flex flex-col gap-2">
               {places.map(({ stock, location }) => (
                 <LocationRow
                   key={location.id}

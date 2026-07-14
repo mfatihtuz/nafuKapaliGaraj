@@ -63,6 +63,7 @@
     "sublocations": "{n} alt konum"
   },
   "level": { "full": "DOLU", "low": "AZ", "empty": "BİTTİ", "unknown": "—" },
+  "picker": { "ungrouped": "Diğer konumlar" },
   "perm": {
     "readonly_title": "Yalnızca görüntüleme",
     "no_add": "Misafir hesabı parça ekleyemez veya düzenleyemez. Yetki için yöneticinize başvurun."
@@ -73,6 +74,7 @@
     "show_quarantine": "Karantinadakileri de göster",
     "count": "{n} sonuç",
     "all_categories": "Tüm kategoriler",
+    "all_locations": "Tüm konumlar",
     "empty_inventory": "Envanter boş. İlk parçayı Ekle sekmesinden girin."
   },
   "part": {
@@ -89,7 +91,9 @@
     "edit": "Parçayı düzenle",
     "name": "Ad",
     "move": "Taşı",
+    "move_action": "Başka çekmeceye taşı",
     "move_to": "Yeni konum kodu, örn. S1-07",
+    "move_to_label": "{code} içindeki stok şuraya taşınacak:",
     "moved": "Taşındı: {code}",
     "danger_zone": "Depodan kaldır",
     "archive": "Bu parçayı depodan kaldır",
@@ -215,6 +219,7 @@
       "defaults_loaded": "Varsayılan tipler yüklendi — kalıcılaştırmak için Kaydet",
       "type_name": "Tip adı (örn. Küçük 25×15)",
       "qty": "Adet",
+      "cabinets": "Bu tipin kullanıldığı dolaplar (Etiket Yazdır'da otomatik seçilir)",
       "no_types": "Henüz etiket tipi eklenmedi",
       "unsaved": "Kaydedilmemiş değişiklik var"
     },

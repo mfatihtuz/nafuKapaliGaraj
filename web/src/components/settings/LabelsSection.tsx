@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../../auth/AuthContext'
 import { api, ApiError } from '../../sync/api'
+import { useLocations } from '../../db/queries'
 import type { LabelType } from '../../db/types'
 import { DEFAULT_LABEL_TYPES, DEFAULT_LABEL_GRID } from '../../lib/labelDefaults'
 import { computeGrid } from '../../lib/labelSheet'
@@ -34,6 +35,12 @@ export function LabelsSection() {
   const [types, setTypes] = useState<LabelType[]>(resolveTypes(s?.label_types))
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
+  // Dolaplar — tip ↔ dolap bağı için (Etiket Yazdır'da dolap seçilince tip otomatik gelir).
+  const locations = useLocations()
+  const cabinets = useMemo(
+    () => locations.filter((l) => l.type === 'cabinet').sort((a, b) => a.sort_order - b.sort_order),
+    [locations],
+  )
   // Kaydet sırasında gelen düzenlemeleri kaybetmemek için düzenleme sayacı.
   const editSeq = useRef(0)
   function touch() { editSeq.current++; setDirty(true) }
@@ -171,6 +178,36 @@ export function LabelsSection() {
                     </div>
                   </div>
                 </div>
+
+                {/* Tip ↔ dolap bağı: bu tip hangi dolaplarda kullanılıyor?
+                    Etiket Yazdır'da dolap seçilince bağlı tip otomatik seçilir. */}
+                {cabinets.length > 0 && (
+                  <div className="mt-2">
+                    <div className="mb-1 text-xs text-brand-400">{t('settings.labels_cfg.cabinets')}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {cabinets.map((cab) => {
+                        const active = (tp.cabinets ?? []).includes(cab.id)
+                        return (
+                          <button
+                            key={cab.id}
+                            type="button"
+                            onClick={() => {
+                              const cur = new Set(tp.cabinets ?? [])
+                              if (active) cur.delete(cab.id)
+                              else cur.add(cab.id)
+                              patchType(tp.id, { cabinets: [...cur] })
+                            }}
+                            className={`chip px-2.5 py-1 text-xs transition-colors ${
+                              active ? 'bg-brand text-white' : 'bg-brand-50 text-brand-500 hover:bg-brand-100'
+                            }`}
+                          >
+                            {cab.code}{cab.name ? ` · ${cab.name}` : ''}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })}

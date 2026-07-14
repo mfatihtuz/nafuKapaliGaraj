@@ -27,6 +27,15 @@ export function Labels() {
   const [labels, setLabels] = useState<LabelItem[]>([])
   const [busy, setBusy] = useState(false)
 
+  /** Dolap seçilince o dolaba bağlı etiket tipi OTOMATİK seçilir (Ayarlar'daki bağ). */
+  function pickCabinet(id: string) {
+    setCabinetId(id)
+    if (id) {
+      const linked = types.find((tp) => tp.cabinets?.includes(id))
+      if (linked) setTypeId(linked.id)
+    }
+  }
+
   const selectedType = types.find((tp) => tp.id === typeId)
   const size = selectedType ?? settings?.label_grid ?? DEFAULT_LABEL_GRID
   // Sütun sayısı En×Boy'dan A4'e göre TÜRETİLİR (elle girilen değere güvenilmez → taşma olmaz).
@@ -57,7 +66,7 @@ export function Labels() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="field-label" htmlFor="cab">{t('labels.cabinet')}</label>
-              <select id="cab" value={cabinetId} onChange={(e) => setCabinetId(e.target.value)} className="select">
+              <select id="cab" value={cabinetId} onChange={(e) => pickCabinet(e.target.value)} className="select">
                 <option value="">—</option>
                 {cabinets.map((c) => (
                   <option key={c.id} value={c.id}>{c.code} — {c.name ?? c.path}</option>

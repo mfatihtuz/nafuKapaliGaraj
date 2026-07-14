@@ -168,7 +168,7 @@ await sect('A-intake', {}, async ({ page, pageErrors }) => {
   const skuPrev = await bodyText(page)
   check('A2 SKU önizleme R-4K7-0805', skuPrev.includes('R-4K7-0805'), skuPrev.slice(0, 80))
   await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
-  await page.locator('input[list="loc-codes"]').fill('D1'); await page.waitForTimeout(250)
+  await page.locator('#intake-loc').fill('D1'); await page.waitForTimeout(250)
 
   // A3: boş miktar ile kayıt engellenmeli (yoksa parça 'Konum atanmamış' olarak kaybolur)
   const saveBtn = page.getByRole('button', { name: /Kaydet/ }).last()
@@ -198,7 +198,7 @@ await sect('A-intake', {}, async ({ page, pageErrors }) => {
   await page.locator('#attr-deger').fill('4K7')
   await page.getByRole('button', { name: '0805', exact: true }).click()
   await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
-  await page.locator('input[list="loc-codes"]').fill('D2')
+  await page.locator('#intake-loc').fill('D2')
   await page.locator('input[placeholder="0"]').fill('5'); await page.waitForTimeout(200)
   await page.getByRole('button', { name: /Kaydet/ }).last().click(); await page.waitForTimeout(600)
   const parts2 = await dexie(page, 'parts')
@@ -211,7 +211,7 @@ await sect('A-intake', {}, async ({ page, pageErrors }) => {
   await page.getByRole('button', { name: /Cam Malzeme/ }).first().click(); await page.waitForTimeout(300)
   await page.locator('#attr-deger').fill('Elyaf Rulo')
   await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
-  await page.locator('input[list="loc-codes"]').fill('S3-01-1'); await page.waitForTimeout(250)
+  await page.locator('#intake-loc').fill('S3-01-1'); await page.waitForTimeout(250)
   check('A11 seviye seçilmeden Kaydet pasif', await page.getByRole('button', { name: /Kaydet/ }).last().isDisabled())
   await page.getByRole('button', { name: 'AZ', exact: true }).click(); await page.waitForTimeout(200)
   await page.getByRole('button', { name: /Kaydet/ }).last().click(); await page.waitForTimeout(600)
@@ -224,7 +224,7 @@ await sect('A-intake', {}, async ({ page, pageErrors }) => {
   await page.getByRole('button', { name: /Muhtelif/ }).first().click(); await page.waitForTimeout(300)
   await page.locator('#attr-deger').fill('Vida Kutusu')
   await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
-  await page.locator('input[list="loc-codes"]').fill('D2'); await page.waitForTimeout(250)
+  await page.locator('#intake-loc').fill('D2'); await page.waitForTimeout(250)
   check('A13 takipsiz modda Kaydet aktif (miktar istenmez)', !(await page.getByRole('button', { name: /Kaydet/ }).last().isDisabled()))
   await page.getByRole('button', { name: /Kaydet/ }).last().click(); await page.waitForTimeout(600)
   const partsU = await dexie(page, 'parts')
@@ -235,12 +235,15 @@ await sect('A-intake', {}, async ({ page, pageErrors }) => {
   await page.getByRole('button', { name: /Direnç/ }).first().click(); await page.waitForTimeout(300)
   await page.locator('#attr-deger').fill('1M')
   await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
-  await page.locator('input[list="loc-codes"]').fill('S3'); await page.waitForTimeout(250)
+  await page.locator('#intake-loc').fill('S3'); await page.waitForTimeout(250)
   check('A15 dolap kodu (S3) grup uyarısı', (await bodyText(page)).includes('dolap/grup'))
-  await page.locator('input[list="loc-codes"]').fill('YOK-99'); await page.waitForTimeout(250)
-  check('A16 geçersiz kod uyarısı', (await bodyText(page)).includes('Böyle bir konum yok'))
-  const dl = await page.$$eval('#loc-codes option', (els) => els.map((e) => e.value))
-  check('A17 öneri listesi yalnızca yaprak konumlar', dl.includes('D1') && dl.includes('S3-01-1') && !dl.includes('S3') && !dl.includes('S3-01'), dl.join(','))
+  // A15.1: eşleşen öneri varken 'bulunamadı' hatası YOK (yazmayı bitirmeden hata basılmaz)
+  check('A15.1 öneri varken erken hata yok', !(await bodyText(page)).includes('Böyle bir konum yok'))
+  await page.locator('#intake-loc').fill('YOK-99'); await page.waitForTimeout(250)
+  check('A16 geçersiz kod uyarısı (öneri kalmayınca)', (await bodyText(page)).includes('Böyle bir konum yok'))
+  await page.locator('#intake-loc').fill('S3-0'); await page.waitForTimeout(300)
+  const dl = await page.$$eval('[data-loc-option]', (els) => els.map((e) => e.getAttribute('data-loc-option')))
+  check('A17 öneri paneli yalnızca yapraklar (grup yok)', dl.length === 4 && dl.includes('S3-01-1') && !dl.includes('S3') && !dl.includes('S3-01'), dl.join(','))
 
   check('A18 sayfa hatası yok (uncaught)', pageErrors.length === 0, pageErrors.join(' | '))
 })
@@ -277,21 +280,22 @@ await sect('B-partdetail', {}, async ({ page, pageErrors }) => {
   // B6: hareket geçmişi güncellendi
   check('B6 hareket geçmişi kayıtları', (await bodyText(page)).includes('Tüketim'))
 
-  // B7: taşı — yaprak hedefe
-  await page.locator('button[title="Taşı"]').first().click(); await page.waitForTimeout(200)
-  await page.locator('input[placeholder*="konum"]').fill('S3-02-1')
+  // B7: taşı — yaprak hedefe (etiketli 'Başka çekmeceye taşı' düğmesi)
+  await page.getByRole('button', { name: 'Başka çekmeceye taşı' }).first().click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder*="onum kodu"]').fill('S3-02-1'); await page.waitForTimeout(250)
   await page.locator('button.btn-primary', { hasText: 'Taşı' }).click(); await page.waitForTimeout(600)
   const stB7 = await dexie(page, 'stock')
   const src = stB7.find((s) => s.key === 'p-r|d1'); const dst = stB7.find((s) => s.key === 'p-r|c21')
   check('B7 taşıma: kaynak 0, hedef tam miktar', src?.qty === 0 && dst?.qty === qtyAfterN, `src=${src?.qty} dst=${dst?.qty}`)
   check('B8 taşıma sonrası UI yeni konumu gösteriyor', (await bodyText(page)).includes('S3-02-1'))
 
-  // B9: taşı — dolap hedefi reddedilir
-  await page.locator('button[title="Taşı"]').first().click(); await page.waitForTimeout(200)
-  await page.locator('input[placeholder*="konum"]').fill('S3')
-  await page.locator('button.btn-primary', { hasText: 'Taşı' }).click(); await page.waitForTimeout(400)
+  // B9: taşı — dolap hedefi: Taşı düğmesi pasif kalır + amber uyarı
+  await page.getByRole('button', { name: 'Başka çekmeceye taşı' }).first().click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder*="onum kodu"]').fill('S3'); await page.waitForTimeout(250)
+  const b9disabled = await page.locator('button.btn-primary', { hasText: 'Taşı' }).isDisabled()
   const stB9 = await dexie(page, 'stock')
-  check('B9 dolaba taşıma engellendi', !stB9.find((s) => s.key === 'p-r|cab'))
+  check('B9 dolaba taşıma engellendi (düğme pasif + uyarı)', b9disabled && !stB9.find((s) => s.key === 'p-r|cab') && (await bodyText(page)).includes('dolap/grup'))
+  await page.getByRole('button', { name: 'Vazgeç' }).last().click().catch(() => {}); await page.waitForTimeout(200)
 
   // B10: doluluk parçası — DOLU/AZ/BİTTİ
   await page.goto(BASE + 'parts/p-cam', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
@@ -318,8 +322,8 @@ await sect('B-partdetail', {}, async ({ page, pageErrors }) => {
 
   // B11.3: takipsiz parça taşıma — kaynak "orada değil" olur, hedef görünür
   await page.goto(BASE + 'parts/p-unm', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
-  await page.locator('button[title="Taşı"]').first().click(); await page.waitForTimeout(200)
-  await page.locator('input[placeholder*="konum"]').fill('D2')
+  await page.getByRole('button', { name: 'Başka çekmeceye taşı' }).first().click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder*="onum kodu"]').fill('D2'); await page.waitForTimeout(250)
   await page.locator('button.btn-primary', { hasText: 'Taşı' }).click(); await page.waitForTimeout(600)
   const unmSt = await dexie(page, 'stock')
   const unmSrc = unmSt.find((s) => s.key === 'p-unm|d1'); const unmDst = unmSt.find((s) => s.key === 'p-unm|d2')
@@ -332,7 +336,7 @@ await sect('B-partdetail', {}, async ({ page, pageErrors }) => {
   await page.locator('#attr-deger').fill('10K')
   await page.getByRole('button', { name: '0805', exact: true }).click(); await page.waitForTimeout(200)
   await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
-  await page.locator('input[list="loc-codes"]').fill('D1')
+  await page.locator('#intake-loc').fill('D1')
   await page.locator('input[placeholder="0"]').fill('7'); await page.waitForTimeout(200)
   await page.getByRole('button', { name: /Kaydet/ }).last().click(); await page.waitForTimeout(500)
   const conflictTxt = await bodyText(page)
@@ -380,7 +384,8 @@ await sect('D-search', {}, async ({ page, pageErrors }) => {
   const txtD = await bodyText(page)
   check('D1 boş sorgu = tüm envanter (göz at)', txtD.includes('10K Direnç') && txtD.includes('Cam Elyaf'))
   check('D2 arşivli parça görünmez', !txtD.includes('Arşivli Parça'))
-  check('D3 karantina konumu varsayılan gizli', !txtD.includes('QRT'))
+  const qrtCard = page.locator('.card', { hasText: 'Karantina Parça' })
+  check('D3 karantina konumu varsayılan gizli (kartta QRT yok)', !(await qrtCard.first().innerText()).includes('QRT'))
 
   // D4: Türkçe-duyarsız arama
   const sInput = page.locator('input[placeholder^="Ara"]')
@@ -398,9 +403,15 @@ await sect('D-search', {}, async ({ page, pageErrors }) => {
   // D7: karantina checkbox
   await page.locator('select').first().selectOption(''); await page.waitForTimeout(200)
   await page.locator('input[type="checkbox"]').check(); await page.waitForTimeout(400)
-  check('D7 karantina kutusu QRT konumunu gösterir', (await bodyText(page)).includes('QRT'))
+  const qrtCard7 = page.locator('.card', { hasText: 'Karantina Parça' })
+  check('D7 karantina kutusu QRT konumunu gösterir', (await qrtCard7.first().innerText()).includes('QRT'))
 
-  check('D8 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+  // D8: konum filtresi — D1 seçilince yalnızca D1'de stoğu olanlar listelenir
+  await page.locator('input[type="checkbox"]').uncheck(); await page.waitForTimeout(200)
+  await page.locator('select').nth(1).selectOption({ label: 'D1' }); await page.waitForTimeout(400)
+  const txtD8 = await bodyText(page)
+  check('D8 konum filtresi yalnız o çekmecedekileri gösterir', txtD8.includes('10K Direnç') && txtD8.includes('Karışık Hurda') && !txtD8.includes('Cam Elyaf'))
+  check('D9 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
 // ═══ E. KATEGORİLER (Settings → Categories CRUD) ═══════════════════════════
@@ -488,6 +499,28 @@ await sect('F-labels', {
   check('F6 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ F2. ETİKET TİPİ ↔ DOLAP BAĞI ══════════════════════════════════════════
+await sect('F2-label-link', {
+  settings: {
+    qr_base_url: 'https://x/l/',
+    label_grid: { w_mm: 38, h_mm: 21, cols: 5, rows: 13 },
+    label_types: [
+      { id: 'lt-a', name: 'Genel 38×21', w_mm: 38, h_mm: 21, cols: 5, rows: 13, qty: 10 },
+      { id: 'lt-c', name: 'C Kule 50×30', w_mm: 50, h_mm: 30, cols: 3, rows: 9, qty: 9, cabinets: ['cab'] },
+    ],
+  },
+}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'labels', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  // Dolap S3 seçilince ona bağlı 'C Kule' tipi OTOMATİK seçilmeli
+  await page.locator('#cab').selectOption({ index: 1 }); await page.waitForTimeout(300)
+  const typeVal = await page.locator('#ltype').inputValue()
+  check('F2.1 dolap seçilince bağlı etiket tipi otomatik geldi', typeVal === 'lt-c', `typeVal=${typeVal}`)
+  // Kullanıcı elle değiştirebilir
+  await page.locator('#ltype').selectOption('lt-a'); await page.waitForTimeout(200)
+  check('F2.2 elle tip değişikliği korunur', (await page.locator('#ltype').inputValue()) === 'lt-a')
+  check('F2.3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ═══ G. MİSAFİR (viewer) SALT-OKUNUR ═══════════════════════════════════════
 await sect('G-viewer', { role: 'viewer' }, async ({ page, pageErrors }) => {
   const txtG = await bodyText(page)
@@ -496,7 +529,7 @@ await sect('G-viewer', { role: 'viewer' }, async ({ page, pageErrors }) => {
   check('G2 intake doğrudan URL → salt-okunur uyarı', (await bodyText(page)).includes('Yalnızca görüntüleme'))
   await page.goto(BASE + 'parts/p-r', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
   const txtG3 = await bodyText(page)
-  check('G3 parça detayında düzenle/taşı/arşiv yok', (await page.getByRole('button', { name: 'Parçayı düzenle' }).count()) === 0 && !txtG3.includes('depodan kaldır') && (await page.locator('button[title="Taşı"]').count()) === 0)
+  check('G3 parça detayında düzenle/taşı/arşiv yok', (await page.getByRole('button', { name: 'Parçayı düzenle' }).count()) === 0 && !txtG3.includes('depodan kaldır') && (await page.getByRole('button', { name: 'Başka çekmeceye taşı' }).count()) === 0)
   check('G4 stok kontrolleri salt-okunur (+1 yok)', (await page.getByRole('button', { name: '+1' }).count()) === 0)
   await page.goto(BASE + 'l/D1', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
   check('G5 konumda "Buraya parça ekle" yok', (await page.getByRole('button', { name: /Buraya parça ekle/ }).count()) === 0)

@@ -34,6 +34,9 @@ export const IconBack = (p: P) => (
 export const IconChevronRight = (p: P) => (
   <svg {...base(p)}><path d="m9 18 6-6-6-6" /></svg>
 )
+export const IconMoveArrow = (p: P) => (
+  <svg {...base(p)}><path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" /></svg>
+)
 export const IconTrash = (p: P) => (
   <svg {...base(p)}><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
 )

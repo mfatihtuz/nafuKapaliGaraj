@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AppHeader, Container } from '../components/Layout'
-import { useSearch, useCategories, type SearchHit } from '../db/queries'
-import type { Category, Part, Stock } from '../db/types'
+import { useSearch, useCategories, useLocations, type SearchHit } from '../db/queries'
+import type { Category, Location, Part, Stock } from '../db/types'
 import { LEVEL_LABEL, formatQty } from '../lib/format'
 import { useT } from '../i18n'
 import { IconSearch } from '../components/icons'
@@ -26,10 +26,15 @@ function ResultCard({ hit }: { hit: SearchHit }) {
   return (
     <div className="card card-pad">
       <Link to={`/parts/${part.id}`} className="block">
-        <div className="font-semibold text-brand-800">{part.name}</div>
+        <div className="flex items-start justify-between gap-2">
+          <div className="font-semibold text-brand-800">{part.name}</div>
+          {/* Kategori (grup) belirgin: gri satır yerine chip */}
+          {categoryName && (
+            <span className="chip shrink-0 bg-brand-50 px-2 py-0.5 text-[11px] text-brand-500">{categoryName}</span>
+          )}
+        </div>
         <div className="text-xs text-brand-400">
           <span className="font-mono">{part.sku}</span>
-          {categoryName && <span> · {categoryName}</span>}
         </div>
       </Link>
 
@@ -70,14 +75,36 @@ function flattenCategories(categories: Category[]): { id: string; label: string 
   return out
 }
 
+/** Konumları girintili düz listeye çevir — dolap seçilince altındaki her şey aranır. */
+function flattenLocations(locations: Location[]): { id: string; label: string }[] {
+  const byParent = new Map<string | null, Location[]>()
+  for (const l of locations) {
+    const k = l.parent_id ?? null
+    if (!byParent.has(k)) byParent.set(k, [])
+    byParent.get(k)!.push(l)
+  }
+  const out: { id: string; label: string }[] = []
+  const walk = (parent: string | null, depth: number) => {
+    for (const l of (byParent.get(parent) ?? []).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }))) {
+      out.push({ id: l.id, label: `${'  '.repeat(depth)}${l.code}${l.name ? ` — ${l.name}` : ''}` })
+      walk(l.id, depth + 1)
+    }
+  }
+  walk(null, 0)
+  return out
+}
+
 export function Search() {
   const { t } = useT()
   const [query, setQuery] = useState('')
   const [categoryId, setCategoryId] = useState('')
+  const [locationId, setLocationId] = useState('')
   const [showQt, setShowQt] = useState(false)
   const categories = useCategories()
+  const locations = useLocations()
   const catOptions = useMemo(() => flattenCategories(categories), [categories])
-  const hits = useSearch(query, categoryId, showQt)
+  const locOptions = useMemo(() => flattenLocations(locations), [locations])
+  const hits = useSearch(query, categoryId, showQt, locationId)
 
   return (
     <>
@@ -88,10 +115,21 @@ export function Search() {
             <select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              className="select sm:w-56"
+              className="select sm:w-48"
+              aria-label={t('common.category')}
             >
               <option value="">{t('search.all_categories')}</option>
               {catOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+            {/* Konum filtresi: dolap seçilince altındaki TÜM çekmeceler aranır */}
+            <select
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value)}
+              className="select sm:w-48"
+              aria-label={t('common.location')}
+            >
+              <option value="">{t('search.all_locations')}</option>
+              {locOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
             <div className="relative flex-1">
               <IconSearch size={20} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-300" />
@@ -116,7 +154,7 @@ export function Search() {
         <div className="flex flex-col gap-2">
           {hits.length === 0 ? (
             <p className="py-12 text-center text-brand-400">
-              {query || categoryId ? t('search.no_results') : t('search.empty_inventory')}
+              {query || categoryId || locationId ? t('search.no_results') : t('search.empty_inventory')}
             </p>
           ) : (
             hits.map((hit) => <ResultCard key={hit.part.id} hit={hit} />)

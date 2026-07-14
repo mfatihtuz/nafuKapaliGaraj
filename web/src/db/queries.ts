@@ -123,12 +123,19 @@ export function useTransactionsForPart(partId: string | undefined) {
 }
 
 /**
- * Türkçe-duyarsız arama + kategori filtresi + göz atma.
- * - Sorgu ve kategori boşsa: TÜM envanter, ada göre sıralı.
+ * Türkçe-duyarsız arama + kategori/konum filtresi + göz atma.
+ * - Sorgu ve filtreler boşsa: TÜM envanter, ada göre sıralı.
  * - Kategori seçiliyse: o kategori ve alt kategorileri.
+ * - Konum seçiliyse: o konum ve TÜM alt konumları (dolap → çekmeceleri);
+ *   yalnızca oralarda stoğu olan parçalar döner, kartta yalnız o yerler görünür.
  * - Sorgu varsa: metne göre süzme. Hepsi birlikte uygulanır.
  */
-export function useSearch(query: string, categoryId = '', includeQuarantine = false): SearchHit[] {
+export function useSearch(
+  query: string,
+  categoryId = '',
+  includeQuarantine = false,
+  locationId = '',
+): SearchHit[] {
   return useLiveQuery(
     async () => {
       const q = query.trim()
@@ -151,6 +158,23 @@ export function useSearch(query: string, categoryId = '', includeQuarantine = fa
         }
       }
 
+      // Seçilen konum + tüm alt konumları (dolap seçilince çekmeceleri de kapsar)
+      let locSet: Set<string> | null = null
+      if (locationId) {
+        const locations = await db.locations.toArray()
+        locSet = new Set([locationId])
+        let added = true
+        while (added) {
+          added = false
+          for (const l of locations) {
+            if (l.parent_id && locSet.has(l.parent_id) && !locSet.has(l.id)) {
+              locSet.add(l.id)
+              added = true
+            }
+          }
+        }
+      }
+
       const parts = await db.parts.filter((p) => !p.deleted_at).toArray()
       const hits: SearchHit[] = []
       for (const part of parts) {
@@ -163,17 +187,20 @@ export function useSearch(query: string, categoryId = '', includeQuarantine = fa
         const places: StockWithLocation[] = []
         for (const stock of stockRows) {
           if (isExhausted(part, stock)) continue
+          if (locSet && !locSet.has(stock.location_id)) continue
           const location = await db.locations.get(stock.location_id)
           if (!location || location.deleted_at) continue
           if (!includeQuarantine && location.type === 'quarantine') continue
           places.push({ stock, location })
         }
+        // Konum filtresi aktifken: o konumda stoğu olmayan parça listelenmez.
+        if (locSet && places.length === 0) continue
         hits.push({ part, places, categoryName: part.category_id ? nameById.get(part.category_id) ?? null : null })
       }
       hits.sort((a, b) => a.part.name.localeCompare(b.part.name, 'tr'))
       return hits.slice(0, 300)
     },
-    [query, categoryId, includeQuarantine],
+    [query, categoryId, includeQuarantine, locationId],
     [],
   )
 }

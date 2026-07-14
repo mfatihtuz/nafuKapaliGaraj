@@ -131,7 +131,7 @@ export interface TenantInfo {
   } | null
 }
 
-/** Etiket tipi — kullanıcı tanımlı format + eldeki adet. */
+/** Etiket tipi — kullanıcı tanımlı format + eldeki adet + bağlı dolaplar. */
 export interface LabelType {
   id: string
   name: string
@@ -140,6 +140,9 @@ export interface LabelType {
   cols: number
   rows: number
   qty: number
+  /** Bu tipin kullanıldığı dolapların konum id'leri — Etiket Yazdır'da dolap
+   *  seçilince tip otomatik gelir. Boş/tanımsız = bağ yok. */
+  cabinets?: string[]
 }
 
 export interface AuthState {
