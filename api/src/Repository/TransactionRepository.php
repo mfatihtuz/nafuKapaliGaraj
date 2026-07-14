@@ -27,7 +27,7 @@ final class TransactionRepository
      */
     public function append(array $data, ?string $actorId): array
     {
-        $id = is_string($data['id'] ?? null) && Uuid::isV7($data['id']) ? $data['id'] : Uuid::v7();
+        $id = is_string($data['id'] ?? null) && Uuid::isValid($data['id']) ? $data['id'] : Uuid::v7();
         $partId = (string) ($data['part_id'] ?? '');
         $locationId = (string) ($data['location_id'] ?? '');
 
@@ -97,7 +97,7 @@ final class TransactionRepository
 
     private function assertBelongsToTenant(string $table, string $id, string $notFoundMsg): void
     {
-        if (!Uuid::isV7($id)) {
+        if (!Uuid::isValid($id)) {
             throw HttpException::unprocessable('Geçersiz id: ' . $id);
         }
         $row = $this->db->one(

@@ -113,6 +113,8 @@
   "labels": {
     "title": "Etiket Yazdır",
     "cabinet": "Dolap / raf",
+    "type": "Etiket tipi",
+    "default_type": "Varsayılan boyut",
     "generate": "Etiketleri oluştur",
     "print": "Yazdır",
     "hint": "Yazdır → kes → yapıştır → telefonla oku",

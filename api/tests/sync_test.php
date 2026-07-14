@@ -362,4 +362,32 @@ fwrite(STDOUT, "\nTEST 15 — gelecek-tarihli level olayı clamp'lenir (kalıcı
     check(strpos((string) $row['level_at'], '2035') === false, 'level_at 2035 değil — geleceğe-karşı clamp uygulandı');
 }
 
+fwrite(STDOUT, "\nTEST 16 — seed verisi (UUIDv4) düzenlenebilir; op_id yine katı v7\n");
+{
+    [$db] = make_test_db();
+    $t = seed_tenant($db);
+    $svc = new SyncService($db, $t['tenant_id'], $t['user_id']);
+    // Seed benzeri v4 id'li kategori
+    $v4 = '10cb6b29-699f-47c5-a889-7a4da75fb134';
+    $r = $svc->push([[
+        'op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'category',
+        'data' => ['id' => $v4, 'code' => 'PAS', 'name_tr' => 'Pasif', 'default_count_mode' => 'level', 'updated_at' => iso(0)],
+    ]]);
+    eq(count($r['applied']), 1, 'v4 id kategori upsert edildi (düzenlenebilir)');
+    // Aynı v4 id ile düzenleme (yeni ad)
+    $r2 = $svc->push([[
+        'op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'category',
+        'data' => ['id' => $v4, 'code' => 'PAS', 'name_tr' => 'Pasif (düzenlendi)', 'default_count_mode' => 'level', 'updated_at' => iso(10)],
+    ]]);
+    eq(count($r2['applied']), 1, 'v4 id kategori yeniden düzenlendi');
+    $name = $db->one('SELECT name_tr FROM categories WHERE id = :id', ['id' => $v4])['name_tr'] ?? null;
+    eq($name, 'Pasif (düzenlendi)', 'düzenleme uygulandı');
+    // op_id v4 ise reddedilir (op_id katı v7)
+    $r3 = $svc->push([[
+        'op_id' => $v4, 'type' => 'upsert', 'entity' => 'category',
+        'data' => ['id' => Uuid::v7(), 'code' => 'X', 'name_tr' => 'X', 'updated_at' => iso(0)],
+    ]]);
+    eq($r3['rejected'][0]['reason'] ?? '', 'invalid_op_id', 'op_id v4 reddedildi (katı v7)');
+}
+
 exit(test_summary());

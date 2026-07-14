@@ -40,8 +40,10 @@ abstract class BaseRepository
     public function lwwUpsert(array $data): array
     {
         $id = is_string($data['id'] ?? null) ? $data['id'] : '';
-        if (!Uuid::isV7($id)) {
-            throw HttpException::unprocessable('Geçersiz id (UUIDv7 bekleniyor)');
+        // Varlık id'leri herhangi bir geçerli UUID olabilir (seed verisi v4; yeni istemci
+        // kayıtları v7). op_id ise katı v7 kalır (SyncService).
+        if (!Uuid::isValid($id)) {
+            throw HttpException::unprocessable('Geçersiz id (UUID bekleniyor)');
         }
 
         $table = $this->table();
@@ -78,7 +80,7 @@ abstract class BaseRepository
     /** Soft delete (SYNC_PROTOCOL §2A — hard delete asla senkronize edilmez). */
     public function softDelete(string $id, ?string $updatedAtIso = null): array
     {
-        if (!Uuid::isV7($id)) {
+        if (!Uuid::isValid($id)) {
             throw HttpException::unprocessable('Geçersiz id');
         }
         $table = $this->table();
