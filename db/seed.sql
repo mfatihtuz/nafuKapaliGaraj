@@ -18,7 +18,9 @@ INSERT INTO tenants (id, name, plan, locale, settings) VALUES
   (@tenant, 'Fatih Garaj Atölyesi', 'free', 'tr', JSON_OBJECT(
      'qr_base_url', 'https://nafuhome.mftyazilim.com/depo_yonetimi/l/',
      'label_grid',  JSON_OBJECT('w_mm', 38, 'h_mm', 21, 'cols', 5, 'rows', 13),
-     'default_count_mode', 'exact'
+     'default_count_mode', 'exact',
+     -- Etiket tipleri INSERT'e gömülü (ayrı UPDATE'e bağımlı değil — farklı tenant id ile kaybolmasın).
+     'label_types', CAST('[{"id":"019f5f4a-b04d-7e2e-bbc6-20c8d171b8ba","name":"S1 · 70’lik göz (küçük)","w_mm":30,"h_mm":12,"cols":6,"rows":22,"qty":70},{"id":"019f5f4a-b04d-7181-8e30-14c13e5fd07d","name":"S2/S3 · modüler çekmece","w_mm":38,"h_mm":21,"cols":5,"rows":13,"qty":42},{"id":"019f5f4a-b04d-72c0-9ac5-5a1b01777457","name":"A1 · büyük çekmece","w_mm":50,"h_mm":30,"cols":4,"rows":9,"qty":16},{"id":"019f5f4a-b04d-77ab-8699-9c5a56c4ade9","name":"A2 · 3D küçük çekmece","w_mm":38,"h_mm":21,"cols":5,"rows":13,"qty":40},{"id":"019f5f4a-b04d-78a3-9797-e2d3d32cbc0c","name":"B1 · dar hazne","w_mm":40,"h_mm":15,"cols":5,"rows":18,"qty":40},{"id":"019f5f4a-b04d-7c57-8a61-8454c73347eb","name":"C1 · kule çekmecesi","w_mm":50,"h_mm":30,"cols":4,"rows":9,"qty":9}]' AS JSON)
   ));
 
 -- Yönetici kullanıcılar. Parolalar İLK GİRİŞTEN SONRA DEĞİŞTİRİLMELİ.
@@ -372,5 +374,4 @@ INSERT INTO categories (id, tenant_id, parent_id, code, name_tr, name_en, sku_te
   ('019f5f4a-b04c-7989-b087-2b357520a86d', @tenant, '019f5f4a-b04c-7091-8ca3-0bce7331d5ae', 'VNA', 'Vana & Musluk', 'Valve & Tap', 'VNA-{deger}', 'exact', '[{"key":"deger","label_tr":"Ölçü / Tanım","type":"text","required":true,"in_sku":true,"order":1}]', 615),
   ('019f5f4a-b04c-7828-98da-4e1dec38d8ee', @tenant, '019f5f4a-b04c-7091-8ca3-0bce7331d5ae', 'CNT', 'Conta & Sızdırmazlık', 'Gasket & Seal', 'CNT-{deger}', 'level', '[{"key":"deger","label_tr":"Ölçü / Tanım","type":"text","required":true,"in_sku":true,"order":1}]', 620);
 
--- Etiket tipleri (fiziksel çekmece tiplerine göre)
-UPDATE tenants SET settings = JSON_SET(settings, '$.label_types', CAST('[{"id":"019f5f4a-b04d-7e2e-bbc6-20c8d171b8ba","name":"S1 · 70’lik göz (küçük)","w_mm":30,"h_mm":12,"cols":6,"rows":22,"qty":70},{"id":"019f5f4a-b04d-7181-8e30-14c13e5fd07d","name":"S2/S3 · modüler çekmece","w_mm":38,"h_mm":21,"cols":5,"rows":13,"qty":42},{"id":"019f5f4a-b04d-72c0-9ac5-5a1b01777457","name":"A1 · büyük çekmece","w_mm":50,"h_mm":30,"cols":4,"rows":9,"qty":16},{"id":"019f5f4a-b04d-77ab-8699-9c5a56c4ade9","name":"A2 · 3D küçük çekmece","w_mm":38,"h_mm":21,"cols":5,"rows":13,"qty":40},{"id":"019f5f4a-b04d-78a3-9797-e2d3d32cbc0c","name":"B1 · dar hazne","w_mm":40,"h_mm":15,"cols":5,"rows":18,"qty":40},{"id":"019f5f4a-b04d-7c57-8a61-8454c73347eb","name":"C1 · kule çekmecesi","w_mm":50,"h_mm":30,"cols":4,"rows":9,"qty":9}]' AS JSON)) WHERE id = @tenant;
+-- (Etiket tipleri artık yukarıdaki tenants INSERT'ine gömülü — ayrı UPDATE gerekmiyor.)

@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../../auth/AuthContext'
 import { api, ApiError } from '../../sync/api'
 import type { LabelType } from '../../db/types'
+import { DEFAULT_LABEL_TYPES, DEFAULT_LABEL_GRID } from '../../lib/labelDefaults'
 import { uuidv7 } from '../../lib/uuid'
 import { useT } from '../../i18n'
 import { useToast } from '../Toast'
@@ -12,21 +13,54 @@ export function LabelsSection() {
   const { auth, refresh } = useAuth()
   const toast = useToast()
   const s = auth?.tenant.settings
-  const grid = s?.label_grid ?? { w_mm: 38, h_mm: 21, cols: 5, rows: 13 }
+  const grid = s?.label_grid ?? DEFAULT_LABEL_GRID
+  const serverTypes = s?.label_types
 
   const [w, setW] = useState(String(grid.w_mm))
   const [h, setH] = useState(String(grid.h_mm))
   const [cols, setCols] = useState(String(grid.cols))
   const [rows, setRows] = useState(String(grid.rows))
   const [qrBase, setQrBase] = useState(s?.qr_base_url ?? '')
-  const [types, setTypes] = useState<LabelType[]>(s?.label_types ?? [])
+  // Sunucuda tip yoksa varsayılanları göster (kullanıcı Kaydet ile kalıcılaştırır).
+  const [types, setTypes] = useState<LabelType[]>(
+    serverTypes && serverTypes.length ? serverTypes : DEFAULT_LABEL_TYPES,
+  )
+  const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
 
+  // Açılışta sunucudan en güncel ayarları çek (önbellekteki kimlik eski olabilir).
+  useEffect(() => {
+    void refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Sunucu ayarları değişince (refresh sonrası) ve kullanıcı düzenleme yapmadıysa eşitle.
+  const serverKey = JSON.stringify({ g: s?.label_grid, q: s?.qr_base_url, t: s?.label_types })
+  useEffect(() => {
+    if (dirty) return
+    const g = s?.label_grid ?? DEFAULT_LABEL_GRID
+    setW(String(g.w_mm)); setH(String(g.h_mm)); setCols(String(g.cols)); setRows(String(g.rows))
+    setQrBase(s?.qr_base_url ?? '')
+    setTypes(s?.label_types && s.label_types.length ? s.label_types : DEFAULT_LABEL_TYPES)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverKey])
+
   function patchType(id: string, patch: Partial<LabelType>) {
+    setDirty(true)
     setTypes((ts) => ts.map((t2) => (t2.id === id ? { ...t2, ...patch } : t2)))
   }
   function addType() {
+    setDirty(true)
     setTypes((ts) => [...ts, { id: uuidv7(), name: '', w_mm: Number(w) || 38, h_mm: Number(h) || 21, cols: Number(cols) || 5, rows: Number(rows) || 13, qty: 0 }])
+  }
+  function removeType(id: string) {
+    setDirty(true)
+    setTypes((ts) => ts.filter((x) => x.id !== id))
+  }
+  function loadDefaults() {
+    setDirty(true)
+    setTypes(DEFAULT_LABEL_TYPES)
+    toast.show(t('settings.labels_cfg.defaults_loaded'), 'info')
   }
 
   async function save() {
@@ -37,6 +71,7 @@ export function LabelsSection() {
         qr_base_url: qrBase.trim(),
         label_types: types.filter((tp) => tp.name.trim() !== ''),
       })
+      setDirty(false)
       await refresh()
       toast.show(t('settings.labels_cfg.saved'), 'success')
     } catch (e) {
@@ -49,7 +84,8 @@ export function LabelsSection() {
   const num = (label: string, val: string, set: (v: string) => void) => (
     <div>
       <label className="field-label">{label}</label>
-      <input className="input" type="number" inputMode="numeric" value={val} onChange={(e) => set(e.target.value)} />
+      <input className="input" type="number" inputMode="numeric" value={val}
+        onChange={(e) => { setDirty(true); set(e.target.value) }} />
     </div>
   )
 
@@ -57,7 +93,8 @@ export function LabelsSection() {
     <div className="space-y-4">
       {/* Varsayılan boyut */}
       <div className="card card-pad">
-        <h2 className="mb-4 text-base font-semibold text-brand-800">{t('settings.labels_cfg.title')}</h2>
+        <h2 className="mb-1 text-base font-semibold text-brand-800">{t('settings.labels_cfg.title')}</h2>
+        <p className="mb-4 text-sm text-brand-400">{t('settings.labels_cfg.grid_explain')}</p>
         <div className="grid gap-4 sm:grid-cols-2">
           {num(t('settings.labels_cfg.w'), w, setW)}
           {num(t('settings.labels_cfg.h'), h, setH)}
@@ -65,19 +102,24 @@ export function LabelsSection() {
           {num(t('settings.labels_cfg.rows'), rows, setRows)}
           <div className="sm:col-span-2">
             <label className="field-label">{t('settings.labels_cfg.qr_base')}</label>
-            <input className="input font-mono text-sm" value={qrBase} onChange={(e) => setQrBase(e.target.value)} autoCapitalize="none" />
+            <input className="input font-mono text-sm" value={qrBase}
+              onChange={(e) => { setDirty(true); setQrBase(e.target.value) }} autoCapitalize="none" />
+            <p className="field-hint">{t('settings.labels_cfg.qr_explain')}</p>
           </div>
         </div>
       </div>
 
       {/* Etiket tipleri + adet */}
       <div className="card card-pad">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-semibold text-brand-800">{t('settings.labels_cfg.types')}</h2>
             <p className="text-sm text-brand-400">{t('settings.labels_cfg.types_hint')}</p>
           </div>
-          <button onClick={addType} className="btn-outline"><IconPlus size={16} /> {t('settings.labels_cfg.add_type')}</button>
+          <div className="flex gap-2">
+            <button onClick={loadDefaults} className="btn-ghost text-sm">{t('settings.labels_cfg.load_defaults')}</button>
+            <button onClick={addType} className="btn-outline"><IconPlus size={16} /> {t('settings.labels_cfg.add_type')}</button>
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -86,7 +128,7 @@ export function LabelsSection() {
               <div className="flex items-center gap-2">
                 <input className="input h-9 flex-1" placeholder={t('settings.labels_cfg.type_name')} value={tp.name}
                   onChange={(e) => patchType(tp.id, { name: e.target.value })} />
-                <button onClick={() => setTypes((ts) => ts.filter((x) => x.id !== tp.id))} className="btn-icon h-9 w-9 text-brand-300 hover:bg-red-50 hover:text-red-600">
+                <button onClick={() => removeType(tp.id)} className="btn-icon h-9 w-9 text-brand-300 hover:bg-red-50 hover:text-red-600">
                   <IconTrash size={16} />
                 </button>
               </div>
@@ -113,7 +155,8 @@ export function LabelsSection() {
         </div>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-3">
+        {dirty && <span className="text-xs text-accent-700">{t('settings.labels_cfg.unsaved')}</span>}
         <button onClick={() => void save()} disabled={busy} className="btn-primary">{t('common.save')}</button>
       </div>
     </div>

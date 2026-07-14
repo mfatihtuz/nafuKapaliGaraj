@@ -191,18 +191,23 @@
     },
     "labels_cfg": {
       "title": "Varsayılan etiket sayfası",
+      "grid_explain": "Bir etiketin fiziksel ölçüsü (En×Boy, mm) ve A4 sayfaya kaç sütun/satır sığdığı. Yazdırma bu ızgaraya göre dizilir.",
       "w": "En (mm)",
       "h": "Boy (mm)",
       "cols": "Sütun",
       "rows": "Satır",
       "qr_base": "QR adres tabanı",
+      "qr_explain": "Her QR bu adresi taşır. Okutunca açılan bağlantı: bu taban + konum kodu (örn. …/l/S1-07).",
       "saved": "Etiket ayarları kaydedildi",
       "types": "Etiket tipleri",
-      "types_hint": "Farklı etiket formatları ve eldeki adetleri",
+      "types_hint": "Fiziksel çekmece tiplerine göre farklı etiket formatları ve eldeki boş etiket adedi",
       "add_type": "Tip ekle",
+      "load_defaults": "Varsayılanları yükle",
+      "defaults_loaded": "Varsayılan tipler yüklendi — kalıcılaştırmak için Kaydet",
       "type_name": "Tip adı (örn. Küçük 25×15)",
       "qty": "Adet",
-      "no_types": "Henüz etiket tipi eklenmedi"
+      "no_types": "Henüz etiket tipi eklenmedi",
+      "unsaved": "Kaydedilmemiş değişiklik var"
     },
     "categories": {
       "title": "Kategoriler",
