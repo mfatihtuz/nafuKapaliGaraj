@@ -1,11 +1,15 @@
+import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../db/dexie'
 import { useT, LANGS } from '../../i18n'
+import { useAuth } from '../../auth/AuthContext'
+import { api, ApiError } from '../../sync/api'
 import { useSyncStatus } from '../../sync/useSync'
 import { useOutboxCount } from '../../db/queries'
 import { engine } from '../../sync/engine'
 import { getSyncErrors, clearSyncErrors, type SyncErrorLog } from '../../sync/outbox'
 import { formatDateTime } from '../../lib/format'
+import { useToast } from '../Toast'
 import { IconSync, IconGlobe, IconDatabase } from '../icons'
 
 async function exportData() {
@@ -26,11 +30,28 @@ async function exportData() {
 
 export function SystemSection() {
   const { t, lang, setLang } = useT()
+  const { auth, refresh } = useAuth()
+  const toast = useToast()
   const status = useSyncStatus()
   const pending = useOutboxCount()
   const errors = useLiveQuery(async () => getSyncErrors(), [], [] as SyncErrorLog[])
   const partCount = useLiveQuery(() => db.parts.filter((p) => !p.deleted_at).count(), [], 0)
   const locCount = useLiveQuery(() => db.locations.filter((l) => !l.deleted_at).count(), [], 0)
+  const [savingPrecise, setSavingPrecise] = useState(false)
+  const preciseCount = !!auth?.tenant.settings?.precise_count
+
+  async function togglePrecise(next: boolean) {
+    setSavingPrecise(true)
+    try {
+      await api.updateOrgSettings({ precise_count: next }) // sunucuda shallow-merge
+      await refresh() // tenant.settings'i tazele (StockControl anında yeni moda geçer)
+      toast.show(t('settings.counting.saved'), 'success')
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.message : 'Hata', 'error')
+    } finally {
+      setSavingPrecise(false)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -75,6 +96,24 @@ export function SystemSection() {
           </div>
         )}
       </div>
+
+      {/* Sayım modu (yalnızca owner) — B4: hassas/çok cihazlı sayım */}
+      {auth?.role === 'owner' && (
+        <div className="card card-pad">
+          <h2 className="mb-3 text-base font-semibold text-brand-800">{t('settings.counting.title')}</h2>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox" checked={preciseCount} disabled={savingPrecise}
+              onChange={(e) => void togglePrecise(e.target.checked)}
+              className="mt-0.5 h-5 w-5 shrink-0 accent-brand-700"
+            />
+            <span>
+              <span className="block text-sm font-medium text-brand-700">{t('settings.counting.precise')}</span>
+              <span className="mt-0.5 block text-xs text-brand-400">{t('settings.counting.precise_hint')}</span>
+            </span>
+          </label>
+        </div>
+      )}
 
       {/* Veri */}
       <div className="card card-pad">

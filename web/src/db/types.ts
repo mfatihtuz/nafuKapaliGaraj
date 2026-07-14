@@ -129,6 +129,9 @@ export interface TenantInfo {
     label_grid?: { w_mm: number; h_mm: number; cols: number; rows: number }
     label_types?: LabelType[]
     default_count_mode?: CountMode
+    /** Hassas sayım (B4): açıkken ve online iken sayım sunucu-yetkili işlenir
+     *  (çok cihazlı doğruluk). Kapalı (varsayılan) = anlık/optimistik. */
+    precise_count?: boolean
   } | null
 }
 

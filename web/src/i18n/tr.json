@@ -329,6 +329,12 @@
       "title": "Veri",
       "export": "Yedeği indir (JSON)",
       "counts": "{parts} parça · {locations} konum"
+    },
+    "counting": {
+      "title": "Sayım",
+      "precise": "Hassas sayım (çok cihazlı)",
+      "precise_hint": "Açıkken ve internet varken sayım sunucu tarafından doğrulanır — iki cihaz aynı anda sayarsa sonuç şaşmaz. Kapalıyken (varsayılan) sayım anında görünür (garaj/tek cihaz için önerilir). İnternet yokken her hâlükârda anlık çalışır.",
+      "saved": "Sayım ayarı kaydedildi"
     }
   }
 }

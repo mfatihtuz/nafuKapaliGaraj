@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import type { Part, Stock, StockLevel } from '../db/types'
-import { moveStock, setLevel, countStock } from '../db/actions'
+import { moveStock, setLevel, countStock, auditStock } from '../db/actions'
 import { formatQty, levelLabel, unitLabel } from '../lib/format'
 import { useT } from '../i18n'
 import { useAuth } from '../auth/AuthContext'
+import { useSyncStatus } from '../sync/useSync'
 import { IconPlus, IconMinus } from './icons'
 
 type Panel = 'none' | 'count' | 'minus'
@@ -40,7 +41,11 @@ function StockReadonly({ part, stock }: { part: Part; stock?: Stock }) {
 /** exact / level / unmanaged sayım modlarına göre stok kontrolü (PRD §5.2). Optimistik. */
 export function StockControl({ part, stock, locationId }: Props) {
   const { t } = useT()
-  const { canWrite } = useAuth()
+  const { canWrite, auth } = useAuth()
+  const { online } = useSyncStatus()
+  // Hassas sayım (B4): açık + online → sunucu-yetkili audit (çok cihazlı doğruluk).
+  // Kapalı ya da offline → anlık optimistik sayım (garaj için varsayılan, kayıpsız).
+  const preciseCount = !!auth?.tenant.settings?.precise_count
   const [panel, setPanel] = useState<Panel>('none')
   const [nVal, setNVal] = useState('')
   const [countVal, setCountVal] = useState('')
@@ -87,7 +92,10 @@ export function StockControl({ part, stock, locationId }: Props) {
   function applyCount() {
     const counted = Number(countVal)
     if (countVal.trim() !== '' && Number.isFinite(counted) && counted >= 0) {
-      void countStock(part.id, locationId, counted, qty)
+      // Hassas mod + online: sunucu, kendi güncel qty'sine göre delta üretir (drift'e
+      // karşı doğru). Aksi hâlde: yerelde anlık optimistik (offline'da tek yol).
+      if (preciseCount && online) void auditStock(part.id, locationId, counted)
+      else void countStock(part.id, locationId, counted, qty)
     }
     setCountVal('')
     setPanel('none')

@@ -854,6 +854,31 @@ await sect('P-empty-labels', {}, async ({ page, pageErrors }) => {
   check('P3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ Q. HASSAS SAYIM (B4 — çok cihazlı sunucu-yetkili sayım) ════════════════
+await sect('Q-precise-count', { settings: { precise_count: true } }, async ({ page, pageErrors }) => {
+  // Q1: owner ayarlarında "Hassas sayım" düğmesi + açık durumda görünür
+  await page.goto(BASE + 'settings', { waitUntil: 'networkidle' }); await page.waitForTimeout(300)
+  await page.getByRole('button', { name: 'Sistem', exact: true }).click(); await page.waitForTimeout(400)
+  const txtQ = await bodyText(page)
+  check('Q1 hassas sayım ayarı owner\'a görünür', txtQ.includes('Hassas sayım'))
+  const checked = await page.locator('input[type="checkbox"]:checked').count()
+  check('Q1b enjekte edilen ayar (açık) işaretli görünür', checked >= 1)
+
+  // Q2: hassas+online → sayım sunucu-yetkili (stock_audit), yerel qty DEĞİŞMEZ
+  await page.goto(BASE + 'parts/p-r', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  const qtyBefore = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1')?.qty
+  await page.getByRole('button', { name: 'Say', exact: true }).first().click(); await page.waitForTimeout(200)
+  await page.locator('input[type="number"]').last().fill('99')
+  await page.locator('button.btn-primary', { hasText: 'Kaydet' }).first().click(); await page.waitForTimeout(500)
+  const qtyAfter = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1')?.qty
+  check('Q2 hassas modda yerel qty optimistik DEĞİŞMEZ (sunucu doğrular)', qtyAfter === qtyBefore, `${qtyBefore} → ${qtyAfter}`)
+  const outbox = await dexie(page, 'outbox')
+  const auditOp = outbox.find((o) => o.type === 'stock_audit')
+  check('Q3 sayım stock_audit (sunucu-yetkili) olarak kuyruğa girdi', !!auditOp && auditOp.data?.counted_qty === 99, JSON.stringify(auditOp?.data ?? null))
+  check('Q4 optimistik stock_move ÜRETİLMEDİ (çift sayım yok)', !outbox.some((o) => o.type === 'stock_move' && o.data?.reason === 'audit'))
+  check('Q5 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ---------------------------------------------------------------------------
 await browser.close()
 const fails = results.filter((r) => !r.ok)
