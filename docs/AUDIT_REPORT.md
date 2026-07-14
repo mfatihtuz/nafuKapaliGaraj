@@ -32,7 +32,7 @@ Raporun geri kalanı bu kavramlara dayanıyor; birkaç dakikanızı ayırın, so
 Tek bir yönteme güvenmedik; birbirini denetleyen **üç ayrı kanıt katmanı** kullandık. Bir katmanın kaçırdığını diğeri yakalar.
 
 ### Katman 1 — Tarayıcı E2E testleri (uçtan uca, gerçek kullanıcı gibi)
-`web/e2e/audit.mjs` dosyası, **gerçek bir tarayıcıda (Chromium)** uygulamayı açar ve tıpkı bir kullanıcı gibi tıklar: kategori seçer, özellik doldurur, "Kaydet"e basar, stok düşürür, taşır, siler. Her adımdan sonra **yerel veritabanına bakıp** sonucun doğru olup olmadığını kontrol eder. Şu an **109 ayrı kontrol** var ve **hepsi geçiyor**. Bu dosya artık kalıcı olarak depoda; her değişiklikten sonra `node e2e/audit.mjs` ile tüm senaryolar yeniden koşulabilir. **Sizi "her yeni özellikte elle deneyip hata bulma" döngüsünden kurtaran şey budur.**
+`web/e2e/audit.mjs` dosyası, **gerçek bir tarayıcıda (Chromium)** uygulamayı açar ve tıpkı bir kullanıcı gibi tıklar: kategori seçer, özellik doldurur, "Kaydet"e basar, stok düşürür, taşır, siler. Her adımdan sonra **yerel veritabanına bakıp** sonucun doğru olup olmadığını kontrol eder. Şu an **140 ayrı kontrol** var ve **hepsi geçiyor**. Bu dosya artık kalıcı olarak depoda; her değişiklikten sonra `node e2e/audit.mjs` ile tüm senaryolar yeniden koşulabilir. **Sizi "her yeni özellikte elle deneyip hata bulma" döngüsünden kurtaran şey budur.**
 
 ### Katman 2 — Sunucu (PHP) testleri
 `api/tests/` altındaki iki dosya, senkronizasyon protokolünü ve güvenlik/oturum mantığını doğrular: **41 + 22 = 63 kontrol**, hepsi geçiyor. Özellikle şunları kanıtlar: aynı işlemi iki kez göndermek stoğu iki kez saymaz (idempotency); iki cihazın stok düşüşleri toplanır; bir organizasyonun verisi diğerine sızmaz; hatalı giriş denemeleri kilitlenir.
@@ -62,10 +62,11 @@ Aşağıdaki her satır, gerçek tarayıcıda tıklanarak sürülen bir akışt�
 
 ## 4. Genel Sonuç
 
-- **Tarayıcı E2E: 109 / 109 geçti.**
-- **Sunucu (PHP): 63 / 63 geçti.**
+- **Tarayıcı E2E: 140 / 140 geçti.** (ilk tur 109 → ikinci tur sağlamlaştırmayla 140)
+- **Sunucu (PHP): 78 / 78 geçti.** (sync 51 + http 27)
 - **Tip denetimi + derleme (tsc + vite build): temiz.**
 - Denetim boyunca bulunan ve **doğrulanan tüm hatalar düzeltildi** (aşağıda). Asılsız çıkan iddialar açıkça elendi.
+- **İkinci tur (14 Tem 2026):** yol haritasındaki tüm sağlamlaştırma maddeleri (B1–B9) tamamlandı — bkz. `docs/ACTION_REPORT.md §A.4`. Yeni testler: self-heal (checksum), çapraz-tenant referans savunması, doluluk eşit-zaman tiebreaker'ı, toplu üretim atomikliği, boş-etiket durumu, hassas sayım.
 
 ---
 
@@ -209,4 +210,6 @@ Bunlar "bulgu" değil; **bilerek** böyle bırakıldı. Şeffaflık için listel
 
 ## 7. Açık Kalanlar
 
-Kod değişikliği yapılmayan bulgular, öneriler ve henüz yazılmamış özellikler **`docs/ACTION_REPORT.md`** belgesinde, her biri "nedir / neden önemli / ne gerekir / öncelik" başlıklarıyla açıklandı. En önemli üçü: **(a)** parça düzenlemenin dar kapsamı (özellik/kategori/üretici düzenlenemiyor), **(b)** senkron uyuşmazlıklarını kendi kendine onaran "checksum" ucunun henüz olmayışı, **(c)** oturum anahtarlarının veritabanında düz metin saklanması.
+**GÜNCELLEME (14 Tem 2026):** İlk turda burada listelenen üç ana açık maddenin **üçü de kapatıldı** — (a) parça düzenleme genişletildi (B1), (b) checksum/self-heal eklendi (B3), (c) oturum anahtarları hash'lendi (B5). Aynı şekilde yol haritasındaki diğer sağlamlaştırma maddeleri de (B2, B4, B6, B7, B8, B9) tamamlandı. Ayrıntı ve kullanım: **`docs/ACTION_REPORT.md §A.4`.**
+
+Geriye kalan açık işler artık yalnızca **ürün fazlarıdır** (FAZ 2+): fotoğraftan AI ile parça tanıma, kritik-stok → alışveriş listesi, projeler/BOM, ödünç takibi, tedarikçi zenginleştirme, döngüsel sayım KPI'ları. Bunlar plan gereği **~100 kalem gerçek envanter girildikten sonra** ele alınacak (gerçek veri, hangi özelliğin gerçekten gerektiğini gösterir).

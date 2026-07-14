@@ -38,7 +38,7 @@ Denetim raporunun (`docs/AUDIT_REPORT.md`) eşlikçisi. Burada iki şey var: **(
 Kategori filtresinin yanına **konum filtresi** geldi: bir dolabı seçince altındaki **tüm çekmeceler** aranır. Kategori adı, sonuç kartlarında gri satır yerine **belirgin bir etiket (chip)** olarak gösterilir.
 
 ### A.2 — Kalıcı Test Altyapısı (en değerli çıktı)
-**`web/e2e/audit.mjs`** — gerçek tarayıcıda 109 kontrollük uçtan uca test paketi. Backend gerektirmez. Çalıştırma: `cd web && npm run build && npm run preview`, sonra `node e2e/audit.mjs`. Her bölüm izole çalışır (biri hata verse diğerleri devam eder), sonunda geçen/kalan özeti verir. **Bundan böyle her değişiklik bu 109 senaryodan geçirilebilir** — "elle deneyip hata bulma" döngüsü sona erdi. Buna ek olarak sunucu tarafında `php api/tests/sync_test.php` (41) ve `http_test.php` (22) çalışır.
+**`web/e2e/audit.mjs`** — gerçek tarayıcıda **140 kontrollük** uçtan uca test paketi. Backend gerektirmez. Çalıştırma: `cd web && npm run build && npm run preview`, sonra `node e2e/audit.mjs`. Her bölüm izole çalışır (biri hata verse diğerleri devam eder), sonunda geçen/kalan özeti verir. **Bundan böyle her değişiklik bu 140 senaryodan geçirilebilir** — "elle deneyip hata bulma" döngüsü sona erdi. Buna ek olarak sunucu tarafında `php api/tests/sync_test.php` (**51**) ve `http_test.php` (**27**) çalışır. Yeni bölümler: O (self-heal), P (boş-etiket durumu), Q (hassas sayım).
 
 ### A.3 — Düzeltmeler (özet; her birinin tam anlatımı Audit Report §5'te)
 Toplam **34'ten fazla** doğrulanmış hata düzeltildi. Başlıca temalar:
@@ -54,9 +54,58 @@ Toplam **34'ten fazla** doğrulanmış hata düzeltildi. Başlıca temalar:
 
 ---
 
-## B. YAPILMAYANLAR (öncelikli yol haritası)
+## A.4 — İkinci Tur Sağlamlaştırma: TÜM yol haritası maddeleri tamamlandı (14 Tem 2026)
 
-Aşağıdaki her madde, bilinçli olarak **şimdilik yapılmadı**. Her biri için: **ne olduğu, neden önem taşıdığı, kabaca ne iş gerektirdiği ve önceliği** verildi.
+Aşağıdaki B-maddeleri (B1–B9, önceki turda "yapılmayanlar") bu turda **tümüyle tamamlandı.** Her biri testlerle korunuyor.
+
+#### B1 — Parça düzenleme genişletildi ✅
+Parça detayında artık **her alan** düzenlenebilir: ad, SKU (benzersizlik denetimiyle), kategori, üretici, üretici kodu (MPN), tüm **özellikler** (kategori şablonuna göre özellik formu), not ve veri sayfası (datasheet) bağlantısı. Yanlış girilen bir parçayı artık silip yeniden girmenize gerek yok. Üretici ve MPN artık **aramada da** bulunur (etiketlere/indekse eklendi).
+
+#### B2 — Kullanıcı yönetimi tamamlandı ✅
+Kullanıcı eklerken form **anında** uyarır (ad + parola ≥ 8 hane + kullanıcı adı ya da e-posta zorunlu — sunucuya gitmeden). Owner artık bir üyenin **parolasını sıfırlayabilir** (üye satırındaki anahtar düğmesi → geçici parola); sıfırlama o kullanıcının tüm açık oturumlarını kapatır (güvenlik).
+
+#### B3 — Kendi kendini onaran senkronizasyon (checksum / self-heal) ✅
+Sunucu ile cihaz, stok verisinin **parmak izini (SHA-256)** karşılaştırır. Nadir bir sapma (kurtarılamayan bir işlem, yarım kalan bir güncelleme) olursa cihaz **sessizce sunucudan yeniden eşitlenir** ve hizalanır. Üç güvenlik kapısı yanlış-pozitif "sürekli yeniden indirme" döngüsünü önler: (1) bekleyen yerel yazım varken yapılmaz, (2) en fazla 5 dakikada bir, (3) tarayıcı kripto desteği yoksa atlanır. Onarım olursa "Ayarlar → Senkronizasyon" listesinde görünür kaydolur.
+
+#### B4 — Hassas (çok cihazlı) sayım modu ✅ *(opsiyonel)*
+**Ayarlar → Sistem**'de owner'a bir anahtar: **"Hassas sayım (çok cihazlı)."** Kapalıyken (varsayılan) sayım eskisi gibi **anında** görünür — garaj/tek cihaz için önerilir. Açıkken ve internet varken sayım **sunucu tarafından** doğrulanır: farkı sunucu kendi güncel değerine göre hesaplar, böylece iki kişi aynı gözü aynı anda sayarsa sonuç şaşmaz. İnternet yokken her hâlde anlık çalışır. (Sunucu-yetkili altyapı zaten hazırdı; artık bir moda bağlandı.)
+
+#### B5 — Oturum güvenliği sertleştirildi ✅
+(a) Oturum anahtarları veritabanında artık **hash'li** (düz metin değil). (b) Geçici senkron hatalarında **artan bekleme (exponential backoff)** — 8 deneme dakikalar içinde tükenmez. (c) Süresi dolan oturum kayıtları oturum açılışında **budanıyor** (sonsuz büyüme yok).
+
+#### B6 — Eşzamanlılık kenar durumları kapatıldı ✅
+(a) Doluluk (DOLU/AZ/BİTTİ) **eşit zaman damgasında** artık belirleyici bir kurala göre çözülür (full > low > empty) — iki cihaz aynı anda farklı seviye yazarsa sonuç deterministik, kalıcı ayrışma olmaz (hem sunucu hem cihaz aynı kuralı uygular). (b) Katalog referansları (kategori/üst konum) artık **tenant aidiyeti** doğrulamasından geçer — başka organizasyona ait bir referansa bağlama reddedilir (izolasyon savunması).
+
+#### B7 — Toplu üretim atomik ve hızlı ✅
+Toplu çekmece üretici artık tüm satırları önce bellekte hazırlayıp **tek bir veritabanı işleminde** yazıyor: yüzlerce çekmecede yarım kalma riski yok (hepsi ya da hiçbiri), tek senkron tetiği — belirgin biçimde daha hızlı.
+
+#### B8 — Sabit metinler sözlüğe taşındı ✅
+Kodun içinde gömülü kalan görüntü metinleri (DOLU/AZ/BİTTİ, hareket adları, "az önce/dk/sa", birim listesi) artık **dil sözlüğünden** çözülüyor. Değerler kanonik kalır (ör. birim 'metre'); yalnızca gösterim çevrilir. Çok dilli altyapı böylece tamamen bağlandı (İngilizce çevirinin kendisi plan gereği sonraki fazda doldurulacak; şu an eksik anahtarlar Türkçe'ye düşer).
+
+#### B9 — Boş-durum yönlendirmeleri ✅
+Etiket sayfasında hiç dolap yoksa artık boş bir liste yerine **"Önce Ayarlar → Konumlar'dan dolap oluşturun"** yönlendirmesi çıkar. Sunucu tarafında yapılandırma (config) bulunamazsa **eyleme dönük** bir kurulum mesajı döner (sessiz hata yerine).
+
+---
+
+## A.5 — Sistem Konumları: W1 / QT / IN nedir, nerede kullanılır?
+
+Bu üçü, kurulumla gelen **sistem konumlarıdır** (`GARAJ` alanının altında). Normal dolaplardan farkları: **düzenlenemez/silinemezler** (Ayarlar → Konumlar'da salt-okunur görünürler) ve fiziksel bir çekmece değil, bir **iş akışı durağıdır.**
+
+| Kod | Tip | Adı | Ne işe yarar |
+|---|---|---|---|
+| **IN** | `intake` (Giriş) | *Giriş Kutusu — kayıt bekleyen parçalar* | Yeni gelen ama henüz kalıcı gözüne yerleştirilmemiş parçalar için **geçici giriş rafı.** "Parti hâlinde parça geldi, tek tek yerleştirmeye vaktim yok; şimdilik sisteme al, sonra dağıtırım" durağı. Parçayı buraya alır, sonra **Taşı** ile gerçek çekmecesine gönderirsiniz. |
+| **W1** | `bench` (Tezgâh) | *Tezgâh — projede kullanımda* | Bir projede **kullanımda / elinizin altında** olan parçalar. Çekmeceden çıkarıp tezgâha aldığınızda parçayı W1'e **taşırsınız**; böylece "çekmecede yok ama kayıp da değil, tezgâhta" bilgisi korunur. Proje bitince geri kaldıysa asıl gözüne taşırsınız. |
+| **QT** | `quarantine` (Karantina) | *Karantina — 12 ay kuralı* | Emin olmadığınız parçalar (söküm/hurdadan çıkan, sağlamlığı şüpheli, "atsam mı sakla mı" dediğiniz) için **bekleme alanı.** Mantık: 12 ay burada durur, o süre içinde kullanmadıysanız gönül rahatlığıyla atarsınız. **Aramada varsayılan olarak GİZLİDİR** — normal envanterinizi kirletmez; "Karantinadakileri de göster" kutusuyla görünür. |
+
+**Kısaca akış:** yeni parça → **IN** (giriş) → asıl çekmece; kullanınca → **W1** (tezgâh) → iş bitince geri; şüpheli/emekli → **QT** (karantina) → 12 ay sonra çöp. Üçü de birer konum olduğu için stok hareketleri (taşıma) bu duraklar arasında kayıpsız izlenir.
+
+---
+
+## B. YOL HARİTASI — bu turda TAMAMLANDI ✅
+
+> **GÜNCELLEME (14 Tem 2026):** Aşağıdaki B1–B9 maddelerinin **tamamı bu turda tamamlandı** (özet ve kullanım: **§A.4**). Bu bölüm, her maddenin özgün gerekçesini (nedir/neden önemli) kayıt olarak korur; artık hepsi kodda ve testlerde mevcuttur. Geriye yalnızca **FAZ 2+** ürün fazları kaldı (aşağıda).
+
+Aşağıdaki her madde için: **ne olduğu, neden önem taşıdığı, kabaca ne iş gerektirdiği ve önceliği** verilmiştir (tarihsel gerekçe).
 
 ### Öncelik 1 — Günlük kullanımda eksikliği hissedilecekler
 
@@ -121,10 +170,10 @@ Bu maddeler ürünün gelecek fazları. **Plan, önce ~100 kalem gerçek envante
 2. Tarayıcıda **Ctrl+Shift+R** (PWA yeni sürümü çeksin).
 3. **Bu turda veritabanı şeması değişmedi** — SQL çalıştırmanız gerekmez. Artık yeni çekmeceleri **uygulama içinden** (Ayarlar → Konumlar) ekleyebilirsiniz.
 
-**Güncel test durumu:** Tarayıcı E2E **109/109** · Sunucu **63/63** · tip denetimi + derleme **temiz**.
+**Güncel test durumu:** Tarayıcı E2E **140/140** · Sunucu **78/78** (sync 51 + http 27) · tip denetimi + derleme **temiz**.
 
 ---
 
 ## D. Önerilen Sıradaki Adım
 
-Plan envanter girişini şart koşuyor; ve elinizde artık bunu yapmak için gereken **iki yeni araç** var (Konum ekranı + Sayım). Önerimiz: **dolaplarınızı/çekmecelerinizi toplu üreticiyle kurun, parçaları girmeye başlayın, saydıkça "Say" ile düzeltin.** Girerken en çok canınızı sıkan şey büyük olasılıkla **B1 (parça düzenlemenin darlığı)** olacaktır — onu ilk fırsatta genişletmeye hazırız; siz deneyip söyleyin.
+Yol haritasındaki tüm sağlamlaştırma maddeleri (B1–B9) artık **tamamlandı**; parça düzenleme de dâhil (B1). Sıra **gerçek veride:** planın şart koştuğu gibi **dolaplarınızı toplu üreticiyle kurun, ~100 kalem envanter girin, saydıkça "Say" ile düzeltin.** Gerçek kullanım, FAZ 2 önceliklerini (fotoğraftan AI ile tanıma, kritik-stok alışveriş listesi, tedarikçi zenginleştirme) netleştirecek. Bir sürtünme/eksik fark ederseniz iletin — hızla ele alırız.

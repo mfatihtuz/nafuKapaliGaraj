@@ -4,6 +4,39 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 
 ---
 
+## 2026-07-14 · İkinci tur — yol haritası (B1–B9) tamamlandı + cascade rename
+
+**Yapıldı:**
+- **Konum kodu cascade rename:** Bir dolabın kodu değişince (ör. `S1`→`SB105`), alt
+  konumların KODLARI da önek-değişimiyle güncellenir (`S1-01`→`SB105-01`) ve path'ler
+  yeniden hesaplanır. Harici kod çakışması denetimi. (LocationsSection `planSubtree`).
+- **B1 — Parça düzenleme genişletildi:** ad/SKU(benzersizlik)/kategori/üretici/MPN/özellikler/
+  not/datasheet düzenlenebilir; üretici+MPN artık aramada da indeksli (`buildTags`).
+- **B2 — Kullanıcı yönetimi:** istemci doğrulaması + owner'ın üye parolasını sıfırlaması
+  (tüm oturumları kapatır). `UserAdminService::resetPassword`, `/api/org/users/password`.
+- **B3 — Checksum/self-heal:** `GET /api/sync/checksum` (stok SHA-256, SORT_STRING kanonik);
+  istemci `checksum.ts` birebir aynı (crypto.subtle) — PHP/JS çapraz-doğrulandı. `engine`
+  ayrışmada resyncFromServer; 3 yanlış-pozitif kapısı (outbox boş / 5dk throttle / crypto).
+- **B4 — Hassas sayım (opsiyonel):** Ayarlar→Sistem owner toggle `precise_count`; açık+online
+  → `auditStock` (sunucu-yetkili), aksi hâlde optimistik `countStock`. Varsayılan KAPALI.
+- **B5 — Güvenlik:** token'lar DB'de SHA-256 hash; outbox exponential backoff; süresi dolan
+  oturumların budanması.
+- **B6 — Eşzamanlılık:** doluluk eşit-zaman tiebreaker (full>low>empty, sunucu+istemci birebir);
+  katalog referanslarında çapraz-tenant savunması (`validateReferences`).
+- **B7 — Toplu üretim atomik:** `saveLocationsBulk` — konumlar+outbox tek Dexie transaction.
+- **B8 — i18n:** LEVEL/REASON/timeAgo/units sözlüğe taşındı (`levelLabel/reasonLabel/unitLabel`).
+- **B9 — Boş-durum:** etikette dolap yoksa yönlendirme; index.php config-yok → 503 + eylem mesajı.
+- Raporlar güncellendi: `ACTION_REPORT.md §A.4` (B-özeti) + `§A.5` (W1/QT/IN açıklaması),
+  `AUDIT_REPORT.md §4/§7`.
+
+**Bilinen sorunlar / backlog:** Yalnızca ürün fazları kaldı (FAZ 2+): AI ile fotoğraftan
+tanıma, kritik-stok alışveriş listesi, projeler/BOM, ödünç, tedarikçi zenginleştirme.
+`en.json` çevirisi plan gereği ertelendi (eksik anahtarlar tr'ye düşer).
+
+**Test durumu:** E2E **140/140** · PHP **51+27=78** · tsc/build temiz.
+
+---
+
 ## 2026-07-14 · Kapsamlı denetim turu
 
 **Yapıldı:**
