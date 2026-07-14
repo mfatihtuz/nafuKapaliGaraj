@@ -14,6 +14,16 @@ function num(v: number | string | null | undefined): number {
   return typeof v === 'number' ? v : Number(v)
 }
 
+/** Doluluk sıralaması (eşit-zaman tiebreaker'ı): full > low > empty. Sunucu ile birebir. */
+function levelRank(level: string | null | undefined): number {
+  switch (level) {
+    case 'full': return 3
+    case 'low': return 2
+    case 'empty': return 1
+    default: return 0
+  }
+}
+
 /**
  * Bir hareketi yerel deftere ekler ve stok görünümünü günceller.
  * Zaten uygulanmışsa (tx.id defterde) hiçbir şey yapmaz → çift sayım olmaz.
@@ -46,9 +56,16 @@ export async function applyTx(raw: Transaction): Promise<void> {
       base.qty = num(base.qty) + tx.delta
     }
 
-    // level: durum (LWW by created_at)
+    // level: durum (LWW by created_at). AYNI zaman damgasında (iki cihaz eşzamanlı
+    // set etmişse) belirleyici tiebreaker: doluluk sıralaması (full>low>empty) —
+    // sunucu StockRepository::setLevel ile birebir. Aksi hâlde istemci/sunucu ayrışır.
     if (tx.level_to) {
-      if (base.level_at === null || tsToMs(tx.created_at) > tsToMs(base.level_at)) {
+      const curMs = tsToMs(tx.created_at)
+      const prevMs = tsToMs(base.level_at)
+      const newer = base.level_at === null || curMs > prevMs
+      const tie = base.level_at !== null && curMs === prevMs
+        && levelRank(tx.level_to) > levelRank(base.level)
+      if (newer || tie) {
         base.level = tx.level_to
         base.level_at = tx.created_at
       }

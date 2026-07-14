@@ -29,6 +29,25 @@ abstract class BaseRepository
     /** @return list<string> JSON olarak saklanan sütunlar (dizi → json_encode). */
     protected function jsonColumns(): array { return []; }
 
+    /** Referans alanı doğrulaması (alt sınıflar override eder). Varsayılan: yok. */
+    protected function validateReferences(array $data): void {}
+
+    /**
+     * Bir referans id'sinin BAŞKA tenant'a ait olmadığını doğrular.
+     * - Boş/null → serbest. Hiç yoksa → serbest (henüz senkronlanmamış olabilir,
+     *   sıralı batch'te önce oluşur). Yalnızca FARKLI tenant'a aitse reddedilir.
+     */
+    protected function assertRefNotForeign(string $refTable, mixed $id, string $msg): void
+    {
+        if (!is_string($id) || $id === '') {
+            return;
+        }
+        $row = $this->db->one("SELECT tenant_id FROM {$refTable} WHERE id = :id", ['id' => $id]);
+        if ($row !== null && (string) $row['tenant_id'] !== $this->tenantId) {
+            throw HttpException::unprocessable($msg);
+        }
+    }
+
     /**
      * Last-Write-Wins upsert (katalog varlıkları — SYNC_PROTOCOL §2A).
      * - id UUIDv7 olmalı.
@@ -56,6 +75,9 @@ abstract class BaseRepository
         if ($existing !== null && (string) $existing['tenant_id'] !== $this->tenantId) {
             throw HttpException::notFound();
         }
+
+        // Referans alanları BAŞKA tenant'a işaret etmesin (izolasyon savunması).
+        $this->validateReferences($data);
 
         $incomingUpdatedAt = Time::clampUpdatedAt(
             is_string($data['updated_at'] ?? null) ? $data['updated_at'] : null,

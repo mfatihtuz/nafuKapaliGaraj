@@ -8,6 +8,12 @@ final class PartRepository extends BaseRepository
 {
     protected function table(): string { return 'parts'; }
 
+    protected function validateReferences(array $data): void
+    {
+        // Parça, BAŞKA tenant'ın kategorisine bağlanamaz.
+        $this->assertRefNotForeign('categories', $data['category_id'] ?? null, 'Kategori bu organizasyona ait değil');
+    }
+
     protected function writableColumns(): array
     {
         return [

@@ -390,4 +390,71 @@ fwrite(STDOUT, "\nTEST 16 — seed verisi (UUIDv4) düzenlenebilir; op_id yine k
     eq($r3['rejected'][0]['reason'] ?? '', 'invalid_op_id', 'op_id v4 reddedildi (katı v7)');
 }
 
+fwrite(STDOUT, "\nTEST 17 — level eşzamanlı çakışma: AYNI zaman damgasında doluluk tiebreaker (full>low>empty)\n");
+{
+    [$db] = make_test_db();
+    $t = seed_tenant($db);
+    $svc = new SyncService($db, $t['tenant_id'], $t['user_id']);
+    $partId = Uuid::v7();
+    $locId = Uuid::v7();
+    $svc->push([
+        opUpsertLocation(['id' => $locId, 'code' => 'B2-01', 'type' => 'drawer', 'path' => 'GARAJ/B2/B2-01', 'updated_at' => iso(0)]),
+        opUpsertPart(['id' => $partId, 'sku' => 'C-TIE', 'name' => 'çakışma', 'count_mode' => 'level', 'updated_at' => iso(0)]),
+    ]);
+    $lvl = fn(string $to, string $when) => [
+        'op_id' => Uuid::v7(), 'type' => 'stock_move',
+        'data' => ['id' => Uuid::v7(), 'part_id' => $partId, 'location_id' => $locId, 'level_to' => $to, 'reason' => 'adjust', 'created_at' => $when],
+    ];
+    // İki cihaz TAM aynı milisaniyede farklı seviye set eder. Deterministik sonuç:
+    // yüksek doluluk kazanır (full > empty). Sıra ne olursa olsun aynı sonuç.
+    $svc->push([$lvl('empty', iso(50))]);
+    $svc->push([$lvl('full', iso(50))]);    // aynı ts → tiebreaker: full kazanır
+    $level = $db->one('SELECT level FROM stock WHERE part_id = :p', ['p' => $partId])['level'] ?? null;
+    eq($level, 'full', 'eşit zaman damgasında full kazandı (tiebreaker)');
+
+    // Ters sıra: önce full, sonra empty → yine full (empty tiebreaker\'ı geçemez)
+    $partId2 = Uuid::v7();
+    $svc->push([opUpsertPart(['id' => $partId2, 'sku' => 'C-TIE2', 'name' => 'çakışma2', 'count_mode' => 'level', 'updated_at' => iso(0)])]);
+    $lvl2 = fn(string $to, string $when) => [
+        'op_id' => Uuid::v7(), 'type' => 'stock_move',
+        'data' => ['id' => Uuid::v7(), 'part_id' => $partId2, 'location_id' => $locId, 'level_to' => $to, 'reason' => 'adjust', 'created_at' => $when],
+    ];
+    $svc->push([$lvl2('full', iso(50))]);
+    $svc->push([$lvl2('empty', iso(50))]);  // aynı ts, düşük doluluk → yok sayılır
+    $level2 = $db->one('SELECT level FROM stock WHERE part_id = :p', ['p' => $partId2])['level'] ?? null;
+    eq($level2, 'full', 'ters sırada da sonuç aynı (deterministik, sıradan bağımsız)');
+}
+
+fwrite(STDOUT, "\nTEST 18 — çapraz-tenant referans savunması: parça, başka tenant'ın kategorisine bağlanamaz\n");
+{
+    [$db] = make_test_db();
+    $tA = seed_tenant($db, 'Atolye A18');
+    $tB = seed_tenant($db, 'Atolye B18');
+    $svcA = new SyncService($db, $tA['tenant_id'], $tA['user_id']);
+    $svcB = new SyncService($db, $tB['tenant_id'], $tB['user_id']);
+
+    // B bir kategori oluşturur
+    $catB = Uuid::v7();
+    $svcB->push([[
+        'op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'category',
+        'data' => ['id' => $catB, 'code' => 'RES', 'name_tr' => 'Direnç', 'default_count_mode' => 'exact', 'updated_at' => iso(0)],
+    ]]);
+
+    // A, parçasını B'nin kategorisine bağlamaya çalışır → reddedilmeli (izolasyon)
+    $partA = Uuid::v7();
+    $res = $svcA->push([opUpsertPart([
+        'id' => $partA, 'sku' => 'R-CROSS', 'name' => 'sızıntı denemesi',
+        'category_id' => $catB, 'count_mode' => 'exact', 'updated_at' => iso(1),
+    ])]);
+    eq(count($res['applied']), 0, 'çapraz-tenant kategori bağı uygulanmadı');
+    eq($res['rejected'][0]['reason'] ?? '', 'unprocessable', 'red sebebi unprocessable');
+
+    // Aynı parça, category_id null ile normal geçer (kontrol grubu)
+    $res2 = $svcA->push([opUpsertPart([
+        'id' => $partA, 'sku' => 'R-CROSS', 'name' => 'kategorisiz',
+        'category_id' => null, 'count_mode' => 'exact', 'updated_at' => iso(2),
+    ])]);
+    eq(count($res2['applied']), 1, 'category_id null ile parça normal upsert edildi');
+}
+
 exit(test_summary());

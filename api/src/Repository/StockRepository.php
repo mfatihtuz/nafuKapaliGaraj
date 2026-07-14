@@ -68,10 +68,16 @@ final class StockRepository
     }
 
     /** level mod: durum (LWW by level_at — SYNC_PROTOCOL §6). */
+    /** Doluluk sıralaması (eşit-zaman tiebreaker'ı): full > low > empty. */
+    private static function levelRank(string $level): int
+    {
+        return match ($level) { 'full' => 3, 'low' => 2, 'empty' => 1, default => 0 };
+    }
+
     public function setLevel(string $partId, string $locationId, string $level, string $atMysql): void
     {
         $existing = $this->db->one(
-            'SELECT id, level_at, last_move_at FROM stock WHERE tenant_id = :tid AND part_id = :pid AND location_id = :lid',
+            'SELECT id, level, level_at, last_move_at FROM stock WHERE tenant_id = :tid AND part_id = :pid AND location_id = :lid',
             ['tid' => $this->tenantId, 'pid' => $partId, 'lid' => $locationId]
         );
         $now = Time::now();
@@ -86,8 +92,13 @@ final class StockRepository
         }
 
         $prevLevelAt = $existing['level_at'] !== null ? (string) $existing['level_at'] : null;
-        // level yalnızca daha yeni bir olay için güncellenir (LWW).
-        if ($prevLevelAt === null || Time::gt($atMysql, $prevLevelAt)) {
+        // LWW: daha yeni olay kazanır. AYNI zaman damgasında (iki cihaz eşzamanlı
+        // set etmişse) belirleyici tiebreaker: doluluk sıralaması (full>low>empty).
+        // Her iki cihaz da AYNI kurala göre çözer → kalıcı ayrışma olmaz.
+        $tie = $prevLevelAt !== null
+            && !Time::gt($atMysql, $prevLevelAt) && !Time::gt($prevLevelAt, $atMysql)
+            && self::levelRank($level) > self::levelRank((string) ($existing['level'] ?? ''));
+        if ($prevLevelAt === null || Time::gt($atMysql, $prevLevelAt) || $tie) {
             $this->db->run(
                 'UPDATE stock SET level = :level, level_at = :at, last_move_at = :at2, updated_at = :now
                   WHERE id = :id',

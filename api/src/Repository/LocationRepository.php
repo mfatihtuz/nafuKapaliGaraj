@@ -8,6 +8,12 @@ final class LocationRepository extends BaseRepository
 {
     protected function table(): string { return 'locations'; }
 
+    protected function validateReferences(array $data): void
+    {
+        // Alt konum, BAŞKA tenant'ın üst konumuna bağlanamaz.
+        $this->assertRefNotForeign('locations', $data['parent_id'] ?? null, 'Üst konum bu organizasyona ait değil');
+    }
+
     protected function writableColumns(): array
     {
         return [
