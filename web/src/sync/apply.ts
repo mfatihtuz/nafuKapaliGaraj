@@ -126,3 +126,20 @@ export async function applyBootstrap(result: BootstrapResult): Promise<void> {
   await setCursor(result.cursor)
   await metaSet(BOOTSTRAPPED, true)
 }
+
+/**
+ * Self-heal (SYNC_PROTOCOL §5.6): türetilmiş + katalog verisini temizler ve
+ * sunucudan sıfırdan bootstrap eder. Yalnızca outbox BOŞKEN çağrılmalı — aksi
+ * hâlde bekleyen optimistik yazımlar ezilir. Meta/auth/outbox'a dokunulmaz.
+ * bulkPut yerine önce clear: sunucuda artık olmayan (hayalet) satırlar da silinir.
+ */
+export async function resyncFromServer(): Promise<void> {
+  await db.transaction('rw', [db.parts, db.locations, db.categories, db.stock, db.transactions], async () => {
+    await Promise.all([
+      db.parts.clear(), db.locations.clear(), db.categories.clear(),
+      db.stock.clear(), db.transactions.clear(),
+    ])
+  })
+  await metaSet(BOOTSTRAPPED, false)
+  await setCursor(0)
+}

@@ -26,6 +26,7 @@ $router->post('/api/auth/logout', [AuthController::class, 'logout'], auth: false
 $router->get('/api/auth/me', [AuthController::class, 'me']);
 $router->get('/api/sync/bootstrap', [SyncController::class, 'bootstrap']);
 $router->get('/api/sync/pull', [SyncController::class, 'pull']);
+$router->get('/api/sync/checksum', [SyncController::class, 'checksum']);
 $router->post('/api/sync/push', [SyncController::class, 'push']);
 
 // Hesap (her rol kendi hesabını yönetir)

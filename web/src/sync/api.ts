@@ -95,6 +95,7 @@ export const api = {
   bootstrap: () => request<BootstrapResult>('GET', '/sync/bootstrap'),
   pull: (since: number, limit = 500) =>
     request<PullResult>('GET', `/sync/pull?since=${since}&limit=${limit}`),
+  checksum: () => request<{ checksum: string; rows: number; server_time: string }>('GET', '/sync/checksum'),
   push: (ops: unknown[]) => request<PushResult>('POST', '/sync/push', { ops }),
 
   // Hesap

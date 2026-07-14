@@ -32,6 +32,13 @@ final class SyncController
         $res->json($svc->pull($since, $limit));
     }
 
+    /** Stok özeti — istemci self-heal karşılaştırması için (SYNC_PROTOCOL §5.6). */
+    public function checksum(Request $req, Response $res, array $params, ?Context $ctx): void
+    {
+        $svc = $this->service($ctx);
+        $res->json($svc->checksum());
+    }
+
     public function push(Request $req, Response $res, array $params, ?Context $ctx): void
     {
         if ($ctx === null) {

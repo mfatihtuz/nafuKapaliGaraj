@@ -59,6 +59,11 @@ async function logErrors(errors: SyncErrorLog[]): Promise<void> {
   await metaSet(SYNC_ERRORS, [...errors, ...existing].slice(0, 100))
 }
 
+/** Tek bir senkronizasyon olayını görünür kayda ekler (ör. self-heal). */
+export async function logSyncEvent(entry: SyncErrorLog): Promise<void> {
+  await logErrors([entry])
+}
+
 /** Kalıcı reddedilen bir op'un yerel optimistik etkisini geri al. */
 async function revertLocal(op: OutboxOp): Promise<void> {
   // stock_move (delta veya level) yerelde applyTx ile uygulanmıştı → geri al.

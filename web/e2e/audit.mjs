@@ -11,6 +11,14 @@
 // ============================================================================
 import { chromium } from 'playwright-core'
 import { writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+
+/** Sunucu SyncService::stockChecksum ile BİREBİR aynı kanonik özet (self-heal testi). */
+function serverChecksum(rows) {
+  const lines = rows.map((s) => `${s.part_id}:${s.location_id}:${Math.round(Number(s.qty) * 1000)}:${s.level ?? ''}`)
+  lines.sort()
+  return createHash('sha256').update(lines.join('\n')).digest('hex')
+}
 
 const EXE = process.env.CHROME_EXE ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:4173/depo_yonetimi/'
@@ -771,6 +779,60 @@ await sect('L-locations', {}, async ({ page, pageErrors }) => {
   check('L10b alt kodlar önek-değişimiyle güncellendi', shelf10?.code === 'S3X-01' && leaf10?.code === 'S3X-01-1', `shelf=${shelf10?.code} leaf=${leaf10?.code}`)
   check('L11 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
+
+// ═══ O. SELF-HEAL (checksum ile sessiz stok kayması onarımı) ═══════════════
+// O1: yerel özet sunucununkiyle EŞLEŞİRSE yeniden bootstrap YAPILMAZ (yanlış
+//     pozitif re-download döngüsü olmaz). O2: AYRIŞIRSA sunucudan onarılır.
+{
+  // O1 — eşleşen özet → heal yok
+  const fx1 = fixture()
+  const calls1 = { checksum: 0, bootstrap: 0 }
+  await sect('O-selfheal', {
+    routes: async (p) => {
+      await p.route('**/api/sync/pull*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ changes: [], cursor: 1, has_more: false }) }))
+      await p.route('**/api/sync/push', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ applied: [], rejected: [], cursor: 1 }) }))
+      await p.route('**/api/sync/checksum', (r) => { calls1.checksum++; return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ checksum: serverChecksum(fx1.stock), rows: fx1.stock.length, server_time: NOW }) }) })
+      await p.route('**/api/sync/bootstrap', (r) => { calls1.bootstrap++; return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tenant: { id: 't1', name: 'Atölye', locale: 'tr', settings: {} }, categories: [], locations: [], parts: [], stock_snapshot: [], stock_transactions: [], cursor: 1, server_time: NOW }) }) })
+    },
+  }, async ({ page, pageErrors }) => {
+    // Özet çağrısını bekle (throttle sıfır → ilk sync'te çalışır)
+    for (let i = 0; i < 30 && calls1.checksum === 0; i++) await page.waitForTimeout(200)
+    await page.waitForTimeout(600) // heal olacaksa görünsün
+    const st = await dexie(page, 'stock')
+    check('O1 eşleşen özet → checksum kontrol edildi', calls1.checksum >= 1)
+    check('O1 eşleşen özet → yeniden bootstrap YAPILMADI (yanlış pozitif yok)', calls1.bootstrap === 0, `bootstrap=${calls1.bootstrap}`)
+    check('O1 eşleşen özet → yerel stok değişmedi', st.find((s) => s.key === 'p-r|d1')?.qty === 50 && st.length === fx1.stock.length)
+    check('O1 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+  })
+
+  // O2 — ayrışan özet → sunucudan onar
+  const fx2 = fixture()
+  const healed = fx2.stock.map((s) => (s.key === 'p-r|d1' ? { ...s, qty: 777 } : s)) // sunucu doğrusu
+  const calls2 = { bootstrap: 0 }
+  await sect('O-selfheal', {
+    routes: async (p) => {
+      await p.route('**/api/sync/pull*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ changes: [], cursor: 1, has_more: false }) }))
+      await p.route('**/api/sync/push', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ applied: [], rejected: [], cursor: 1 }) }))
+      await p.route('**/api/sync/checksum', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ checksum: '0'.repeat(64), rows: 0, server_time: NOW }) }))
+      await p.route('**/api/sync/bootstrap', (r) => { calls2.bootstrap++; return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tenant: { id: 't1', name: 'Atölye', locale: 'tr', settings: {} }, categories: fx2.cats, locations: fx2.locs, parts: fx2.parts, stock_snapshot: healed, stock_transactions: [], cursor: 5, server_time: NOW }) }) })
+    },
+  }, async ({ page, pageErrors }) => {
+    // Onarılmış qty (777) yerelde görünene dek bekle
+    let qty = null
+    for (let i = 0; i < 40; i++) {
+      const st = await dexie(page, 'stock')
+      qty = st.find((s) => s.key === 'p-r|d1')?.qty
+      if (qty === 777) break
+      await page.waitForTimeout(200)
+    }
+    check('O2 ayrışan özet → yeniden bootstrap tetiklendi', calls2.bootstrap >= 1, `bootstrap=${calls2.bootstrap}`)
+    check('O2 ayrışan özet → yerel stok sunucudan onarıldı (qty 50→777)', qty === 777, `qty=${qty}`)
+    const errs = await dexie(page, 'meta')
+    const log = errs.find((m) => m.key === 'sync_errors')?.value ?? []
+    check('O2 self-heal olayı görünür loglandı', Array.isArray(log) && log.some((e) => e.reason === 'self_heal'))
+    check('O2 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+  })
+}
 
 // ---------------------------------------------------------------------------
 await browser.close()

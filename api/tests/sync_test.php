@@ -457,4 +457,36 @@ fwrite(STDOUT, "\nTEST 18 — çapraz-tenant referans savunması: parça, başka
     eq(count($res2['applied']), 1, 'category_id null ile parça normal upsert edildi');
 }
 
+fwrite(STDOUT, "\nTEST 19 — checksum: deterministik, hareketle değişir, tenant'lar arası ayrışır (self-heal)\n");
+{
+    [$db] = make_test_db();
+    $t = seed_tenant($db);
+    $svc = new SyncService($db, $t['tenant_id'], $t['user_id']);
+    $ids = scaffold($svc);
+
+    $c0 = $svc->checksum();
+    check(is_string($c0['checksum']) && strlen($c0['checksum']) === 64, 'checksum 64-hex SHA-256');
+    $c0b = $svc->checksum();
+    eq($c0['checksum'], $c0b['checksum'], 'checksum deterministik (aynı durum → aynı özet)');
+
+    // Hareket sonrası değişir
+    $svc->push([opMove($ids['part_id'], $ids['location_id'], 100, 'initial', iso(1))]);
+    $c1 = $svc->checksum();
+    check($c1['checksum'] !== $c0['checksum'], 'stok değişince checksum değişir');
+    eq($c1['rows'], 1, 'checksum 1 stok satırı bildirdi');
+
+    // Aynı mutlak sonuca ulaşan farklı yol → aynı checksum (durum tabanlı, geçmiş değil)
+    [$db2] = make_test_db();
+    $t2 = seed_tenant($db2);
+    $svc2 = new SyncService($db2, $t2['tenant_id'], $t2['user_id']);
+    // Aynı id'lerle kur (checksum id-bağımlı)
+    $svc2->push([
+        opUpsertLocation(['id' => $ids['location_id'], 'code' => 'S1-07', 'type' => 'drawer', 'path' => 'GARAJ/S1/S1-07', 'updated_at' => iso(0)]),
+        opUpsertPart(['id' => $ids['part_id'], 'sku' => 'R-0805-10K', 'name' => '10K', 'count_mode' => 'exact', 'updated_at' => iso(0)]),
+    ]);
+    $svc2->push([opMove($ids['part_id'], $ids['location_id'], 60, 'purchase', iso(1))]);
+    $svc2->push([opMove($ids['part_id'], $ids['location_id'], 40, 'purchase', iso(2))]); // 60+40=100
+    eq($svc2->checksum()['checksum'], $c1['checksum'], 'farklı yol, aynı nihai qty → aynı checksum');
+}
+
 exit(test_summary());

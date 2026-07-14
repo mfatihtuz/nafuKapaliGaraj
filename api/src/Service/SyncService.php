@@ -91,6 +91,50 @@ final class SyncService
         return $this->changeLog->since($since, $limit);
     }
 
+    // --- CHECKSUM / SELF-HEAL (SYNC_PROTOCOL §5.6) --------------------------
+
+    /**
+     * Stok görünümünün deterministik özeti. İstemci kendi yerel özetini bununla
+     * karşılaştırır; ayrışma varsa (sessiz stok kayması — türetme hatası, yarım
+     * uygulanmış tx) yeniden bootstrap ederek sunucu doğrusuna hizalanır.
+     *
+     * Kanonik satır: "part_id:location_id:qtyMilli:level" — tümü ASCII.
+     * Sıralama SORT_STRING (bayt sırası) → istemcideki JS varsayılan (code-unit)
+     * sıralamasıyla BİREBİR aynı (tüm karakterler <128). SQL ORDER BY kullanılmaz;
+     * çünkü utf8mb4 collation'ı JS ile ayrışabilir.
+     *
+     * @return array{checksum:string,rows:int,server_time:string}
+     */
+    public function checksum(): array
+    {
+        $rows = $this->db->all(
+            'SELECT part_id, location_id, qty, level FROM stock WHERE tenant_id = :tid',
+            ['tid' => $this->tenantId]
+        );
+        return [
+            'checksum'    => self::stockChecksum($rows),
+            'rows'        => count($rows),
+            'server_time' => Time::now(),
+        ];
+    }
+
+    /**
+     * Stok satırlarından kanonik SHA-256 üretir. İstemci (checksum.ts) ile
+     * BİREBİR aynı algoritma; ikisi ayrışırsa self-heal tetiklenir.
+     * @param list<array<string,mixed>> $rows
+     */
+    public static function stockChecksum(array $rows): string
+    {
+        $lines = [];
+        foreach ($rows as $r) {
+            $qtyMilli = (int) round(((float) $r['qty']) * 1000);
+            $level = $r['level'] !== null && $r['level'] !== '' ? (string) $r['level'] : '';
+            $lines[] = $r['part_id'] . ':' . $r['location_id'] . ':' . $qtyMilli . ':' . $level;
+        }
+        sort($lines, SORT_STRING); // bayt sırası — JS default sort ile aynı (ASCII)
+        return hash('sha256', implode("\n", $lines));
+    }
+
     // --- PUSH (SYNC_PROTOCOL §5.3) ------------------------------------------
 
     /**

@@ -134,6 +134,13 @@ eq(count($push['applied'] ?? []), 3, 'push → 3 op applied');
 $pull = dispatch($db, $config, 'GET', '/api/sync/pull?since=0&limit=500', [], [$cookieName => $token]);
 check(count($pull['changes'] ?? []) >= 3, 'pull → değişiklikler döndü');
 
+// 9b. Checksum (self-heal): auth ile 64-hex döner, tokensız 401
+$chk = dispatch($db, $config, 'GET', '/api/sync/checksum', [], [$cookieName => $token]);
+check(isset($chk['checksum']) && strlen((string) $chk['checksum']) === 64, 'checksum → 64-hex döndü');
+eq($chk['rows'] ?? null, 1, 'checksum → 1 stok satırı (yukarıdaki push)');
+$chkNoAuth = dispatch($db, $config, 'GET', '/api/sync/checksum');
+eq($chkNoAuth['error'] ?? null, 'unauthorized', 'checksum token yok → 401');
+
 // 10. Viewer push edemez
 $viewerUser = Uuid::v7();
 $db->run('INSERT INTO users (id, email, password_hash, display_name) VALUES (:i,:e,:h,:n)',

@@ -1,10 +1,11 @@
 // Senkronizasyon motoru — pull/push döngüsü ve tetikleyiciler (SYNC_PROTOCOL §5.5).
 // Sıra: pull → push → pull.
 
-import { getCursor, metaGet, BOOTSTRAPPED } from '../db/dexie'
+import { getCursor, metaGet, metaSet, BOOTSTRAPPED } from '../db/dexie'
 import { api, ApiError } from './api'
-import { applyBootstrap, applyChanges } from './apply'
-import { pushOutbox } from './outbox'
+import { applyBootstrap, applyChanges, resyncFromServer } from './apply'
+import { localStockChecksum } from './checksum'
+import { pendingCount, pushOutbox, logSyncEvent } from './outbox'
 
 export interface SyncStatus {
   online: boolean
@@ -13,6 +14,10 @@ export interface SyncStatus {
   lastError: string | null
   authExpired: boolean
 }
+
+/** Self-heal kontrol aralığı: her sync değil, en fazla 5 dakikada bir. */
+const CHECKSUM_INTERVAL_MS = 5 * 60 * 1000
+const CHECKSUM_LAST = 'checksum_last_at'
 
 type Listener = (s: SyncStatus) => void
 
@@ -96,6 +101,7 @@ class SyncEngine {
       await this.pullAll() // pull
       await pushOutbox() //   push
       await this.pullAll() // pull (push sonrası kendi değişikliklerimizi de al)
+      await this.verifyChecksum() // self-heal: sessiz stok kaymasını yakala
       this.emit({ lastSyncAt: Date.now(), lastError: null, authExpired: false })
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -128,6 +134,48 @@ class SyncEngine {
       await applyChanges(result)
       if (!result.has_more) break
     }
+  }
+
+  /**
+   * Self-heal (SYNC_PROTOCOL §5.6): yerel stok özeti sunucununkiyle ayrışırsa
+   * (sessiz kayma — türetme hatası, yarım kalmış apply) yeniden bootstrap eder.
+   *
+   * Güvenlik kapıları — YANLIŞ POZİTİF re-bootstrap döngüsünü önler:
+   *  1. Outbox boş değilse ATLA — bekleyen optimistik yazımlar sunucuda henüz yok,
+   *     özet doğal olarak ayrışır; ezmek veri kaybı olur.
+   *  2. En fazla ~5 dakikada bir kontrol (her hızlı sync değil).
+   *  3. crypto.subtle yoksa (güvensiz bağlam) ATLA — özet üretilemez.
+   */
+  private async verifyChecksum(): Promise<void> {
+    if (await pendingCount() > 0) return // bekleyen yazım varken güvenli değil
+    const last = await metaGet<number>(CHECKSUM_LAST, 0)
+    const now = Date.now()
+    if (now - last < CHECKSUM_INTERVAL_MS) return
+    await metaSet(CHECKSUM_LAST, now)
+
+    const local = await localStockChecksum()
+    if (local === null) return // crypto yok → self-heal devre dışı
+
+    let remote: { checksum: string; rows: number }
+    try {
+      remote = await api.checksum()
+    } catch (err) {
+      // 401 dışındaki hatalar self-heal'i atlatır ama sync'i başarısız saymaz
+      // (özet doğrulaması opsiyonel bir güvenlik ağıdır, çekirdek akış değil).
+      if (err instanceof ApiError && err.status === 401) throw err
+      return
+    }
+    if (remote.checksum === local.checksum) return // hizalı
+
+    // Ayrışma: sunucu doğrudur. Temizle + yeniden bootstrap. Outbox hâlâ boş
+    // olduğundan (kapı 1) veri kaybı yok. Görünür logla.
+    await resyncFromServer()
+    await this.ensureBootstrap()
+    await logSyncEvent({
+      op_id: 'self-heal', type: 'checksum', reason: 'self_heal',
+      message: `Stok özeti ayrıştı (yerel ${local.rows}, sunucu ${remote.rows} satır) — sunucudan yeniden eşitlendi`,
+      at: now,
+    })
   }
 }
 
