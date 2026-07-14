@@ -58,6 +58,21 @@ export function Labels() {
     setBusy(false)
   }
 
+  if (cabinets.length === 0) {
+    return (
+      <>
+        <AppHeader title={t('labels.title')} />
+        <Container>
+          <div className="card card-pad mt-4 text-center">
+            <IconTag size={32} className="mx-auto mb-3 text-brand-300" />
+            <h2 className="mb-1 text-base font-semibold text-brand-800">{t('labels.empty_title')}</h2>
+            <p className="mx-auto max-w-md text-sm text-brand-500">{t('labels.empty_hint')}</p>
+          </div>
+        </Container>
+      </>
+    )
+  }
+
   return (
     <>
       <AppHeader title={t('labels.title')} />

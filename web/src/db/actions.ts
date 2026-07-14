@@ -2,7 +2,7 @@
 // UI asla doğrudan API'ye yazmaz (ARCHITECTURE §1, SYNC_PROTOCOL §5.4).
 
 import { db } from './dexie'
-import type { Part, Location, Category, Stock, StockLevel, TxReason, Transaction } from './types'
+import type { Part, Location, Category, Stock, StockLevel, TxReason, Transaction, OutboxOp } from './types'
 import { uuidv7 } from '../lib/uuid'
 import { nowIso } from '../lib/format'
 import { enqueue } from '../sync/outbox'
@@ -33,6 +33,31 @@ export async function saveCategory(cat: Category): Promise<string> {
   await enqueue({ type: 'upsert', entity: 'category', data: row })
   engine.schedule()
   return row.id
+}
+
+/**
+ * Toplu konum yazımı — konum satırları + outbox op'ları TEK Dexie transaction'ında
+ * (atomik: hepsi ya da hiçbiri; bir hata yarım ağaç bırakmaz). Toplu çekmece
+ * üreticisi yüzlerce satırı tek tek yazmak yerine buradan geçirir (tek işlem, tek
+ * sync tetiği — çok daha hızlı). op_id'ler burada üretilir; seq'i Dexie atar.
+ */
+export async function saveLocationsBulk(rows: Location[]): Promise<void> {
+  if (rows.length === 0) return
+  const ts = nowIso()
+  const stamped: Location[] = rows.map((r) => ({ ...r, updated_at: ts }))
+  const ops: OutboxOp[] = stamped.map((row) => ({
+    op_id: uuidv7(),
+    type: 'upsert',
+    entity: 'location',
+    data: row,
+    created_at: Date.now(),
+    attempts: 0,
+  }))
+  await db.transaction('rw', db.locations, db.outbox, async () => {
+    await db.locations.bulkPut(stamped)
+    await db.outbox.bulkAdd(ops) // seq (++auto) sıra korunur: ebeveyn önce
+  })
+  engine.schedule()
 }
 
 export async function softDeletePart(id: string): Promise<void> {

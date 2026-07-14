@@ -37,9 +37,15 @@ foreach ($candidates as $c) {
 }
 
 if ($config === null) {
-    http_response_code(500);
+    // Kurulum eksik: yapılandırma yok. Deployer'a NE yapması gerektiğini söyle
+    // (sunucu yolu sızdırmadan) — sessiz 500 yerine eyleme dönük mesaj.
+    http_response_code(503);
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['error' => 'config_not_found', 'message' => 'config.php bulunamadı']);
+    echo json_encode([
+        'error'   => 'config_not_found',
+        'message' => 'Yapılandırma bulunamadı. Kurulum: private/config.php dosyasını oluşturun '
+                   . '(örnek için config.example.php dosyasını kopyalayıp veritabanı bilgilerinizi girin).',
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 

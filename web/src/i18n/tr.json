@@ -147,7 +147,9 @@
     "generate": "Etiketleri oluştur",
     "print": "Yazdır",
     "hint": "Yazdır → kes → yapıştır → telefonla oku",
-    "count": "{n} etiket"
+    "count": "{n} etiket",
+    "empty_title": "Henüz dolap yok",
+    "empty_hint": "Etiketler dolap bazında basılır. Önce Ayarlar → Konumlar'dan bir dolap (ve çekmeceler) oluşturun; sonra buradan QR etiketlerini yazdırabilirsiniz."
   },
   "settings": {
     "title": "Ayarlar",

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useLocations } from '../../db/queries'
 import { db } from '../../db/dexie'
 import type { Location, LocationType } from '../../db/types'
-import { saveLocation, softDeleteLocation } from '../../db/actions'
+import { saveLocation, saveLocationsBulk, softDeleteLocation } from '../../db/actions'
 import { uuidv7 } from '../../lib/uuid'
 import { foldToAscii } from '../../lib/normalize'
 import { useT } from '../../i18n'
@@ -307,18 +307,22 @@ function BulkGenerator({
       const known = new Map<string, Location>()
       for (const l of all) known.set(l.code.toUpperCase(), l)
 
+      // Tüm satırlar önce BELLEKTE toplanır, sonra TEK atomik işlemle yazılır (B7):
+      // yüzlerce çekmecede yarım ağaç riski yok, tek sync tetiği — çok daha hızlı.
+      const toWrite: Location[] = []
+
       /**
-       * "Bul, dirilt ya da oluştur":
+       * "Bul, dirilt ya da oluştur" (saf/senkron — yalnızca belleği günceller):
        *   • Aktif konum varsa yeniden kullanılır (çocuklar doğru ebeveyne/yola bağlanır).
        *   • Silinmiş konum varsa DİRİLTİLİR (aynı id korunur — UNIQUE çakışması olmaz).
        *   • Yoksa yeni oluşturulur.
        */
-      const ensure = async (code: string, name: string | null, type: LocationType, pParentId: string | null, pPath: string, countIt: boolean) => {
+      const ensure = (code: string, name: string | null, type: LocationType, pParentId: string | null, pPath: string, countIt: boolean) => {
         const hit = known.get(code.toUpperCase())
         if (hit && !hit.deleted_at) return { id: hit.id, path: hit.path }
         if (hit && hit.deleted_at) {
           const revived: Location = { ...hit, parent_id: pParentId, name, type, path: pPath, deleted_at: null }
-          await saveLocation(revived)
+          toWrite.push(revived)
           known.set(code.toUpperCase(), revived)
           if (countIt) created++
           return { id: hit.id, path: pPath }
@@ -328,7 +332,7 @@ function BulkGenerator({
           id, parent_id: pParentId, code, name, type, path: pPath,
           photo_id: null, capacity_note: null, sort_order: sort++, updated_at: '', deleted_at: null,
         }
-        await saveLocation(made)
+        toWrite.push(made)
         known.set(code.toUpperCase(), made)
         if (countIt) created++
         return { id, path: pPath }
@@ -339,7 +343,7 @@ function BulkGenerator({
       let cabPath = parent?.path ?? ''
       if (createCabinet) {
         const path = parent ? `${parent.path}/${pfx}` : pfx
-        const cab = await ensure(pfx, cabName.trim() || null, 'cabinet', parent?.id ?? null, path, false)
+        const cab = ensure(pfx, cabName.trim() || null, 'cabinet', parent?.id ?? null, path, false)
         cabId = cab.id; cabPath = cab.path
       }
       if (cabPath === '') cabPath = pfx // kök güvenliği
@@ -348,19 +352,21 @@ function BulkGenerator({
       if (structure === 'flat') {
         for (let i = 1; i <= nDraw; i++) {
           const code = `${pfx}-${pad2(i)}`
-          await ensure(code, null, 'drawer', cabId, `${cabPath}/${code}`, true)
+          ensure(code, null, 'drawer', cabId, `${cabPath}/${code}`, true)
         }
       } else {
         for (let m = 1; m <= nMod; m++) {
           const mCode = `${pfx}-${pad2(m)}`
-          const shelf = await ensure(mCode, `${t('loc_type.shelf')} ${m}`, 'shelf', cabId, `${cabPath}/${mCode}`, false)
+          const shelf = ensure(mCode, `${t('loc_type.shelf')} ${m}`, 'shelf', cabId, `${cabPath}/${mCode}`, false)
           for (let k = 1; k <= nDraw; k++) {
             const code = `${mCode}-${k}`
             // Yol, gerçek ebeveynin (mevcut ya da yeni raf) yolundan türetilir.
-            await ensure(code, null, 'drawer', shelf.id, `${shelf.path}/${code}`, true)
+            ensure(code, null, 'drawer', shelf.id, `${shelf.path}/${code}`, true)
           }
         }
       }
+
+      await saveLocationsBulk(toWrite) // atomik: konumlar + outbox tek işlemde
       toast.show(t('settings.locations.generated', { n: created }), 'success')
       onDone()
     } finally {

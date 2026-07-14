@@ -834,6 +834,26 @@ await sect('L-locations', {}, async ({ page, pageErrors }) => {
   })
 }
 
+// ═══ P. BOŞ-DURUM: hiç dolap yokken Etiket sayfası yönlendirir (B9) ══════════
+await sect('P-empty-labels', {}, async ({ page, pageErrors }) => {
+  // Konumları temizle → hiç dolap yok senaryosu
+  await page.evaluate(() => new Promise((res) => {
+    const o = indexedDB.open('depo')
+    o.onsuccess = () => {
+      const dbx = o.result
+      const tx = dbx.transaction('locations', 'readwrite')
+      tx.objectStore('locations').clear()
+      tx.oncomplete = () => { dbx.close(); res() }
+    }
+  }))
+  await page.goto(BASE + 'labels', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  const txt = await bodyText(page)
+  check('P1 dolap yokken boş-durum yönlendirmesi görünür', txt.includes('Henüz dolap yok') && txt.includes('Konumlar'))
+  const hasSelect = await page.locator('#cab').count()
+  check('P2 dolap yokken etiket formu gizli (yalnızca yönlendirme)', hasSelect === 0)
+  check('P3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ---------------------------------------------------------------------------
 await browser.close()
 const fails = results.filter((r) => !r.ok)
