@@ -5,11 +5,21 @@ import type { Category, PartAttributes } from '../db/types'
 import { foldToAscii, normalize } from './normalize'
 
 /**
- * Arama etiketleri: ad + kategori adları + öznitelik değerlerinden normalize token seti.
- * Parça adı/özellikleri her değiştiğinde YENİDEN üretilmeli (arama eski ada takılmasın).
+ * Arama etiketleri: ad + kategori adları + öznitelik değerleri (+ ör. üretici) →
+ * normalize token seti. Parça adı/özellik/üreticisi her değiştiğinde YENİDEN
+ * üretilmeli (arama eski değere takılmasın).
  */
-export function buildTags(name: string, attrs: PartAttributes | null, cat: Category | undefined): string {
-  const parts = [name, cat?.name_tr ?? '', cat?.name_en ?? '', ...Object.values(attrs ?? {}).map((v) => (v == null ? '' : String(v)))]
+export function buildTags(
+  name: string,
+  attrs: PartAttributes | null,
+  cat: Category | undefined,
+  ...extra: (string | null | undefined)[]
+): string {
+  const parts = [
+    name, cat?.name_tr ?? '', cat?.name_en ?? '',
+    ...Object.values(attrs ?? {}).map((v) => (v == null ? '' : String(v))),
+    ...extra.map((v) => v ?? ''),
+  ]
   const tokens = new Set<string>()
   for (const p of parts) for (const w of normalize(p).split(/\s+/)) if (w) tokens.add(w)
   return [...tokens].join(',')

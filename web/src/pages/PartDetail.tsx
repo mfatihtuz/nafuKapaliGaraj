@@ -2,14 +2,16 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AppHeader, Container } from '../components/Layout'
 import {
-  usePart, useCategory, useLocationsForPart, useTransactionsForPart, useLocations,
+  usePart, useCategory, useCategories, useLocationsForPart, useTransactionsForPart, useLocations,
 } from '../db/queries'
 import type { CountMode, Part, Stock, Location } from '../db/types'
 import { savePart, softDeletePart, movePartStock } from '../db/actions'
+import { db } from '../db/dexie'
 import { LEVEL_LABEL, REASON_LABEL, timeAgo } from '../lib/format'
 import { buildTags } from '../lib/sku'
 import { UNITS } from '../lib/units'
 import { StockControl } from '../components/StockControl'
+import { AttributeForm } from '../components/AttributeForm'
 import { useT } from '../i18n'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
@@ -91,6 +93,7 @@ export function PartDetail() {
   const toast = useToast()
   const part = usePart(id)
   const category = useCategory(part?.category_id)
+  const categories = useCategories()
   const places = useLocationsForPart(id)
   const history = useTransactionsForPart(id)
   const locations = useLocations()
@@ -116,6 +119,10 @@ export function PartDetail() {
   }
 
   const current = editing && draft ? draft : part
+  // Düzenlerken öznitelik formu, DRAFT'ın kategorisinin şemasına göre gösterilir.
+  const draftCategory = editing && draft
+    ? categories.find((c) => c.id === draft.category_id) ?? category
+    : category
 
   function startEdit() {
     setDraft({ ...part! })
@@ -127,8 +134,17 @@ export function PartDetail() {
   }
   async function save() {
     if (!draft) return
-    // Ad/özellik değişmiş olabilir — arama etiketlerini yeniden üret (eski ada takılmasın).
-    await savePart({ ...draft, tags: buildTags(draft.name, draft.attributes, category) })
+    const sku = draft.sku.trim().toUpperCase()
+    if (!sku) { toast.show(t('part.sku_required'), 'error'); return }
+    // SKU parçanın tekil kimliği — değiştiyse başka aktif parçayla çakışmamalı.
+    if (sku !== part!.sku) {
+      const clash = await db.parts.where('sku').equals(sku).first()
+      if (clash && clash.id !== draft.id && !clash.deleted_at) {
+        toast.show(t('part.sku_taken', { code: sku }), 'error'); return
+      }
+    }
+    // Ad/kategori/özellik değişmiş olabilir — arama etiketlerini yeniden üret.
+    await savePart({ ...draft, sku, tags: buildTags(draft.name, draft.attributes, draftCategory, draft.manufacturer, draft.mpn) })
     setEditing(false)
     setDraft(null)
     toast.show(t('common.save'), 'success')
@@ -140,7 +156,7 @@ export function PartDetail() {
     navigate(-1)
   }
 
-  const schema = category?.attribute_schema ?? null
+  const schema = draftCategory?.attribute_schema ?? null
 
   return (
     <>
@@ -168,19 +184,48 @@ export function PartDetail() {
         {/* Başlık */}
         <div className="card mb-3 p-4">
           {editing ? (
-            <input
-              className="input mb-2 text-lg font-bold"
-              value={current.name}
-              onChange={(e) => setDraft({ ...current, name: e.target.value })}
-            />
-          ) : (
-            <h1 className="text-xl font-bold text-brand-800">{part.name}</h1>
-          )}
-          <div className="font-mono text-sm text-brand-400">{part.sku}</div>
-          {(part.mpn || part.manufacturer) && (
-            <div className="mt-1 text-xs text-brand-400">
-              {[part.manufacturer, part.mpn].filter(Boolean).join(' · ')}
+            <div className="grid gap-3">
+              <div>
+                <label className="field-label" htmlFor="pname">{t('part.name')}</label>
+                <input id="pname" className="input text-lg font-bold" value={current.name}
+                  onChange={(e) => setDraft({ ...current, name: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="field-label" htmlFor="psku">{t('part.code')}</label>
+                  <input id="psku" className="input font-mono uppercase" value={current.sku}
+                    onChange={(e) => setDraft({ ...current, sku: e.target.value })} />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="pcat">{t('common.category')}</label>
+                  <select id="pcat" className="select" value={current.category_id ?? ''}
+                    onChange={(e) => setDraft({ ...current, category_id: e.target.value || null })}>
+                    <option value="">{t('common.none')}</option>
+                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name_tr}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="pman">{t('part.manufacturer')}</label>
+                  <input id="pman" className="input" value={current.manufacturer ?? ''}
+                    onChange={(e) => setDraft({ ...current, manufacturer: e.target.value || null })} />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="pmpn">{t('part.mpn')}</label>
+                  <input id="pmpn" className="input font-mono" value={current.mpn ?? ''}
+                    onChange={(e) => setDraft({ ...current, mpn: e.target.value || null })} />
+                </div>
+              </div>
             </div>
+          ) : (
+            <>
+              <h1 className="text-xl font-bold text-brand-800">{part.name}</h1>
+              <div className="font-mono text-sm text-brand-400">{part.sku}</div>
+              {(part.mpn || part.manufacturer) && (
+                <div className="mt-1 text-xs text-brand-400">
+                  {[part.manufacturer, part.mpn].filter(Boolean).join(' · ')}
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -233,21 +278,55 @@ export function PartDetail() {
         </div>
 
         {/* Öznitelikler */}
-        {part.attributes && Object.keys(part.attributes).length > 0 && (
+        {editing && draft ? (
+          (schema && schema.length > 0) && (
+            <div className="card mb-3 p-4">
+              <div className="field-label mb-2">{t('part.attributes')}</div>
+              <AttributeForm
+                schema={schema}
+                values={draft.attributes ?? {}}
+                onChange={(k, v) => setDraft({ ...draft, attributes: { ...(draft.attributes ?? {}), [k]: v } })}
+              />
+            </div>
+          )
+        ) : (
+          part.attributes && Object.keys(part.attributes).length > 0 && (
+            <div className="card mb-3 p-4">
+              <div className="field-label">{t('part.attributes')}</div>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                {(schema ?? []).map((def) => {
+                  const v = part.attributes?.[def.key]
+                  if (v === null || v === undefined || v === '') return null
+                  return (
+                    <div key={def.key} className="flex justify-between border-b border-mist pb-1">
+                      <dt className="text-brand-400">{def.label_tr}</dt>
+                      <dd className="font-medium text-brand-700">{String(v)}{def.unit ? ` ${def.unit}` : ''}</dd>
+                    </div>
+                  )
+                })}
+              </dl>
+            </div>
+          )
+        )}
+
+        {/* Not + veri sayfası (datasheet) */}
+        {editing && draft ? (
           <div className="card mb-3 p-4">
-            <div className="field-label">{t('part.attributes')}</div>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              {(schema ?? []).map((def) => {
-                const v = part.attributes?.[def.key]
-                if (v === null || v === undefined || v === '') return null
-                return (
-                  <div key={def.key} className="flex justify-between border-b border-mist pb-1">
-                    <dt className="text-brand-400">{def.label_tr}</dt>
-                    <dd className="font-medium text-brand-700">{String(v)}{def.unit ? ` ${def.unit}` : ''}</dd>
-                  </div>
-                )
-              })}
-            </dl>
+            <label className="field-label" htmlFor="pnote">{t('common.notes')}</label>
+            <textarea id="pnote" rows={2} className="input mb-3" value={draft.notes ?? ''}
+              onChange={(e) => setDraft({ ...draft, notes: e.target.value || null })} />
+            <label className="field-label" htmlFor="pds">{t('part.datasheet')}</label>
+            <input id="pds" type="url" inputMode="url" className="input font-mono text-sm" placeholder="https://…"
+              value={draft.datasheet_url ?? ''} onChange={(e) => setDraft({ ...draft, datasheet_url: e.target.value || null })} />
+          </div>
+        ) : (part.notes || part.datasheet_url) && (
+          <div className="card mb-3 p-4">
+            {part.notes && <><div className="field-label">{t('common.notes')}</div><p className="mb-2 whitespace-pre-wrap text-sm text-brand-700">{part.notes}</p></>}
+            {part.datasheet_url && (
+              <a href={part.datasheet_url} target="_blank" rel="noreferrer" className="text-sm font-medium text-accent-700 underline">
+                {t('part.datasheet')} ↗
+              </a>
+            )}
           </div>
         )}
 

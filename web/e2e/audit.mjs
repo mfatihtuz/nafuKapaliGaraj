@@ -531,6 +531,38 @@ await sect('F2-label-link', {
   check('F2.3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ N. PARÇA DÜZENLEME (genişletilmiş — B1) ══════════════════════════════════
+await sect('N-part-edit', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'parts/p-r', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  await page.getByRole('button', { name: 'Parçayı düzenle' }).click(); await page.waitForTimeout(200)
+  // Üretici / MPN / kod
+  await page.locator('#pman').fill('Yageo')
+  await page.locator('#pmpn').fill('RC0805-10K')
+  await page.locator('#psku').fill('R-10K-0805-V2')
+  // Öznitelik (AttributeForm): değer + paket enum
+  await page.locator('#attr-deger').fill('10K'); await page.waitForTimeout(100)
+  await page.getByRole('button', { name: '0805', exact: true }).click().catch(() => {})
+  // Not + datasheet
+  await page.locator('#pnote').fill('Raf ömrü uzun')
+  await page.locator('#pds').fill('https://ornek/ds.pdf')
+  await page.getByRole('button', { name: 'Kaydet' }).first().click(); await page.waitForTimeout(500)
+
+  const pr = (await dexie(page, 'parts')).find((p) => p.id === 'p-r')
+  check('N1 üretici/MPN kaydedildi', pr?.manufacturer === 'Yageo' && pr?.mpn === 'RC0805-10K', JSON.stringify({ m: pr?.manufacturer, mpn: pr?.mpn }))
+  check('N2 SKU düzenlendi', pr?.sku === 'R-10K-0805-V2', pr?.sku)
+  check('N3 öznitelik (paket=0805) kaydedildi', pr?.attributes?.paket === '0805', JSON.stringify(pr?.attributes))
+  check('N4 not + datasheet kaydedildi', pr?.notes === 'Raf ömrü uzun' && pr?.datasheet_url === 'https://ornek/ds.pdf')
+  check('N5 arama etiketleri (tags) yeniden üretildi (yageo içerir)', (pr?.tags || '').includes('yageo'), pr?.tags)
+
+  // N6: SKU tekilliği — başka parçanın koduna çevirmeye çalış (p-cam: CAM-ELYAF)
+  await page.getByRole('button', { name: 'Parçayı düzenle' }).click(); await page.waitForTimeout(200)
+  await page.locator('#psku').fill('CAM-ELYAF')
+  await page.getByRole('button', { name: 'Kaydet' }).first().click(); await page.waitForTimeout(400)
+  const pr2 = (await dexie(page, 'parts')).find((p) => p.id === 'p-r')
+  check('N6 çakışan SKU engellendi + uyarı', pr2?.sku === 'R-10K-0805-V2' && (await bodyText(page)).includes('kullanılıyor'))
+  check('N7 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ═══ M. DOLULUK TAŞIMA (BİTTİ hayaleti birikmemeli) ═══════════════════════════
 await sect('M-level-move', {}, async ({ page, pageErrors }) => {
   // p-cam doluluk parçası, d2'de DOLU. İki kez taşı → sadece son konum görünmeli.
