@@ -26,7 +26,7 @@ final class HealthController
             $dbOk = false;
         }
         $res->json([
-            'ok'      => true,
+            'ok'      => $dbOk, // yalnızca gövdeye bakan izleme aracı da arızayı görsün
             'db'      => $dbOk,
             'time'    => Time::now(),
             'app'     => 'depo',

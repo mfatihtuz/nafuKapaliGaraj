@@ -4,6 +4,29 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 
 ---
 
+## 2026-07-14 · Kapsamlı denetim turu
+
+**Yapıldı:**
+- 90 kontrollük kalıcı E2E paketi: `web/e2e/audit.mjs` (build + preview + `node e2e/audit.mjs`).
+- 34 hata düzeltildi (tam liste: `docs/AUDIT_REPORT.md` §3). Öne çıkanlar: tenant izolasyonu
+  (hesap değişiminde yerel veri silme), çıkışta bekleyen-işlem koruması, push serileştirme
+  (GET_LOCK), bekleyen-upsert'li not_found reddinin geçici sayılması, miktar>0 zorunluluğu,
+  −N sınırı, kategori döngü/tekillik/yetim korumaları, görünmez Düzenle düğmesi,
+  grup konumda alt-konum listesi.
+- Raporlar: `docs/AUDIT_REPORT.md` (bulgular) + `docs/ACTION_REPORT.md` (yapılan/yapılacak).
+
+**Kaldı (sıradaki tur — kullanıcı talebi, sırayla):**
+1. Malzeme ekle/sil/taşı akışlarının UI/UX yeniden tasarımı (tüm sayfalar).
+2. Etiket tipi ↔ dolap ilişkisi (dolap seçince tip otomatik; tip güncellenince yansısın).
+3. Aramada çekmece/konum filtresi + grup/alt-grup görsel belirginliği.
+
+**Bilinen sorunlar / backlog:** `docs/ACTION_REPORT.md` §B (konum CRUD ekranı yok,
+sayım ekranı yok, checksum/self-heal yok, token hash, backoff…).
+
+**Test durumu:** E2E 90/90 · PHP 41+22 · tsc/build temiz.
+
+---
+
 ## Durum: FAZ 0 + FAZ 1 (MVP) TAMAMLANDI
 
 Uygulama uçtan uca inşa edildi ve test edildi. Kalan tek adım: **canlıya yükleme**

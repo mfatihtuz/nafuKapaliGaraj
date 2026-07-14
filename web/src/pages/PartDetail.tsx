@@ -71,14 +71,15 @@ function LocationRow({
       {moving && (
         <div className="mt-2 flex items-center gap-2 rounded-lg bg-brand-50 p-2">
           <input
-            list="move-loc-codes"
+            list={`move-loc-${location.id}`}
             value={dest}
             onChange={(e) => setDest(e.target.value)}
             placeholder={t('part.move_to')}
             className="input h-9 flex-1 font-mono uppercase"
             autoCapitalize="characters"
           />
-          <datalist id="move-loc-codes">
+          {/* id konum-bazlı: parça birden çok konumdaysa yinelenen id olmasın. */}
+          <datalist id={`move-loc-${location.id}`}>
             {storable.map((l) => <option key={l.id} value={l.code}>{l.name ?? l.path}</option>)}
           </datalist>
           <button onClick={() => void doMove()} className="btn-primary h-9 px-3 text-sm">
@@ -159,7 +160,7 @@ export function PartDetail() {
         right={
           !canWrite ? null : editing ? (
             <div className="flex items-center gap-1.5">
-              <button onClick={cancelEdit} className="btn h-9 px-3 text-sm text-white/80 hover:bg-white/10">
+              <button onClick={cancelEdit} className="btn h-9 px-3 text-sm text-brand-500 hover:bg-brand-50">
                 {t('common.cancel')}
               </button>
               <button onClick={() => void save()} className="btn-primary h-9 px-3 text-sm">
@@ -167,7 +168,8 @@ export function PartDetail() {
               </button>
             </div>
           ) : (
-            <button onClick={startEdit} aria-label={t('part.edit')} title={t('part.edit')} className="btn-icon h-9 w-9 text-white/90 hover:bg-white/10">
+            /* Başlık zemini BEYAZ — buton koyu renk olmalı (beyaz-üstü-beyaz görünmezdi). */
+            <button onClick={startEdit} aria-label={t('part.edit')} title={t('part.edit')} className="btn-icon h-9 w-9 text-brand-600 hover:bg-brand-50">
               <IconEdit size={18} />
             </button>
           )

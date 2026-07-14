@@ -39,6 +39,10 @@ final class StockService
         if ($delta === null && $levelTo === null) {
             throw HttpException::unprocessable('Hareket için delta veya level_to gerekli');
         }
+        // Sayısal olmayan delta (dizi/bool/metin) sessizce 0 veya 1'e cast edilmesin.
+        if ($delta !== null && !is_numeric($delta)) {
+            throw HttpException::unprocessable('delta sayısal olmalı');
+        }
 
         $tx = $this->txRepo->append($data, $actorId);
         // Stok türetmesi, deftere yazılan KANONİK (clamp'li) created_at'i kullanır —

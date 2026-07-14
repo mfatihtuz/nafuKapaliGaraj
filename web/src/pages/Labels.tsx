@@ -94,8 +94,9 @@ export function Labels() {
           )}
         </div>
 
-        {/* Yazdırma alanı */}
+        {/* Yazdırma alanı — ekranda dar cihazda kendi içinde kayar, baskıda tam boy */}
         {labels.length > 0 && (
+          <div className="overflow-x-auto print:overflow-visible">
           <div
             className="grid gap-[1mm]"
             style={{ gridTemplateColumns: `repeat(${grid.cols}, ${grid.w_mm}mm)` }}
@@ -114,6 +115,7 @@ export function Labels() {
                 </div>
               </div>
             ))}
+          </div>
           </div>
         )}
       </Container>

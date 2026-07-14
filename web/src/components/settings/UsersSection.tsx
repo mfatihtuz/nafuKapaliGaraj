@@ -158,7 +158,7 @@ export function UsersSection() {
                   </select>
                 )}
                 {!isMe && (
-                  <button onClick={() => void remove(u.id)} className="btn-icon text-brand-300 hover:bg-red-50 hover:text-red-600">
+                  <button onClick={() => void remove(u.id)} title={t('settings.users.remove')} aria-label={t('settings.users.remove')} className="btn-icon text-brand-300 hover:bg-red-50 hover:text-red-600">
                     <IconTrash size={17} />
                   </button>
                 )}

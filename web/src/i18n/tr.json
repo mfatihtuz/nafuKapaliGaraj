@@ -59,7 +59,8 @@
     "empty": "Bu çekmece boş",
     "add_part": "Buraya parça ekle",
     "not_found": "Konum bulunamadı",
-    "system": "Sistem konumu"
+    "system": "Sistem konumu",
+    "sublocations": "{n} alt konum"
   },
   "level": { "full": "DOLU", "low": "AZ", "empty": "BİTTİ", "unknown": "—" },
   "perm": {
@@ -144,7 +145,8 @@
       "org": "Organizasyon",
       "categories": "Kategoriler",
       "labels": "Etiket ayarları",
-      "system": "Sistem"
+      "system": "Sistem",
+      "language": "Dil"
     },
     "account": {
       "title": "Hesap bilgileri",
@@ -184,7 +186,7 @@
       "member": "Üye",
       "viewer": "Misafir",
       "owner_hint": "Her şeyi yönetir",
-      "member_hint": "Okur ve stok hareketi yapar; silme yok",
+      "member_hint": "Okur; stok, parça ve kategori işlemleri yapar",
       "viewer_hint": "Yalnızca görüntüler ve denetler"
     },
     "org": {

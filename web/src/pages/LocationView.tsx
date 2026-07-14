@@ -1,10 +1,10 @@
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AppHeader, Container } from '../components/Layout'
-import { useLocationByCode, useStockAtLocation } from '../db/queries'
+import { useLocationByCode, useStockAtLocation, useLocations } from '../db/queries'
 import { StockControl } from '../components/StockControl'
 import { useT } from '../i18n'
 import { useAuth } from '../auth/AuthContext'
-import { IconPlus, IconChevronRight } from '../components/icons'
+import { IconPlus, IconChevronRight, IconFolder } from '../components/icons'
 
 const SYSTEM_TYPES = ['intake', 'bench', 'quarantine', 'loan', 'project']
 
@@ -15,6 +15,12 @@ export function LocationView() {
   const navigate = useNavigate()
   const location = useLocationByCode(code)
   const items = useStockAtLocation(location?.id)
+  const allLocations = useLocations()
+  // Dolap/modül gibi grup konumları: alt konumları listelenir, doğrudan parça almaz.
+  const children = allLocations
+    .filter((l) => l.parent_id === location?.id)
+    .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }))
+  const isGroup = children.length > 0
 
   if (location === undefined) {
     return (
@@ -56,26 +62,49 @@ export function LocationView() {
           )}
         </div>
 
-        <div className="flex flex-col gap-2">
-          {items.length === 0 ? (
-            <p className="py-10 text-center text-brand-400">{t('location.empty')}</p>
-          ) : (
-            items.map(({ stock, part }) => (
-              <div key={part.id} className="card flex items-center gap-3 p-3">
-                <button
-                  onClick={() => navigate(`/parts/${part.id}`)}
-                  className="min-w-0 flex-1 text-left"
-                >
-                  <div className="truncate font-semibold text-brand-800">{part.name}</div>
-                  <div className="truncate font-mono text-xs text-brand-400">{part.sku}</div>
-                </button>
-                <StockControl part={part} stock={stock} locationId={location.id} />
-              </div>
-            ))
-          )}
-        </div>
+        {/* Grup konumu (dolap/modül): alt konumları listele — "boş çekmece" yanılgısı olmasın */}
+        {isGroup ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="section-title mb-1 flex items-center gap-1.5">
+              <IconFolder size={13} /> {t('location.sublocations', { n: children.length })}
+            </div>
+            {children.map((child) => (
+              <Link
+                key={child.id}
+                to={`/l/${encodeURIComponent(child.code)}`}
+                className="card flex items-center justify-between p-3 transition-colors hover:border-accent"
+              >
+                <span className="loc-code text-lg">{child.code}</span>
+                <span className="flex items-center gap-2 text-sm text-brand-400">
+                  {child.name}
+                  <IconChevronRight size={16} className="text-brand-300" />
+                </span>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {items.length === 0 ? (
+              <p className="py-10 text-center text-brand-400">{t('location.empty')}</p>
+            ) : (
+              items.map(({ stock, part }) => (
+                <div key={part.id} className="card flex items-center gap-3 p-3">
+                  <button
+                    onClick={() => navigate(`/parts/${part.id}`)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <div className="truncate font-semibold text-brand-800">{part.name}</div>
+                    <div className="truncate font-mono text-xs text-brand-400">{part.sku}</div>
+                  </button>
+                  <StockControl part={part} stock={stock} locationId={location.id} />
+                </div>
+              ))
+            )}
+          </div>
+        )}
 
-        {canWrite && (
+        {/* Parça yalnızca yaprak konuma eklenir — grup görünümünde buton yok. */}
+        {canWrite && !isGroup && (
           <button
             onClick={() => navigate(`/intake?location=${encodeURIComponent(location.code)}`)}
             className="btn-primary mt-4 w-full"
