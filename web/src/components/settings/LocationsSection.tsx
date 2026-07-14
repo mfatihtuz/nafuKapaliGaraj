@@ -66,17 +66,34 @@ export function LocationsSection({ canWrite }: { canWrite: boolean }) {
     return parent ? `${parent.path}/${code}` : code
   }
 
+  /** Alt konumların materyalize yollarını (path) yeniden hesaplayıp kaydeder. */
+  async function cascadePaths(parentId: string, parentPath: string) {
+    for (const child of childrenOf(parentId)) {
+      const cp = `${parentPath}/${child.code}`
+      if (child.path !== cp) await saveLocation({ ...child, path: cp })
+      await cascadePaths(child.id, cp)
+    }
+  }
+
   async function save() {
     if (!draft) return
     const code = sanitizeCode(draft.code)
     if (!code) { toast.show(t('settings.locations.need_code'), 'error'); return }
-    if (locations.some((l) => l.id !== draft.id && l.code.toUpperCase() === code)) {
+    // Tekillik SİLİNMİŞLER dâhil kontrol edilir — DB'de UNIQUE(tenant_id, code) var,
+    // silinmiş bir kodun tekrar açılması sunucuda çakışma yaratmasın.
+    const all = await db.locations.toArray()
+    if (all.some((l) => l.id !== draft.id && l.code.toUpperCase() === code)) {
       toast.show(t('settings.locations.code_taken', { code }), 'error'); return
     }
     if (draft.parent_id && selfAndDescendants(draft.id).has(draft.parent_id)) {
       toast.show(t('settings.locations.cycle'), 'error'); return
     }
-    await saveLocation({ ...draft, code, path: pathFor(draft.parent_id, code), name: draft.name?.trim() || null })
+    const newPath = pathFor(draft.parent_id, code)
+    await saveLocation({ ...draft, code, path: newPath, name: draft.name?.trim() || null })
+    // Kod veya üst değişince alt konumların yolları BAYATLAR — etiket baskısı ve konum
+    // araması eski yola takılır. Bu yüzden tüm alt ağacın path'i yeniden yazılır.
+    const old = byId.get(draft.id)
+    if (old && old.path !== newPath) await cascadePaths(draft.id, newPath)
     setDraft(null)
     toast.show(t('common.save'), 'success')
   }
@@ -253,49 +270,67 @@ function BulkGenerator({
 
   async function generate() {
     if (!pfx) { toast.show(t('settings.locations.need_code'), 'error'); return }
-    const existing = new Set(locations.map((l) => l.code.toUpperCase()))
     const parent = parentId ? byId.get(parentId) : undefined
     setBusy(true)
     try {
       let sort = baseSort
-      const mk = async (code: string, name: string | null, type: LocationType, pParentId: string | null, pPath: string) => {
-        if (existing.has(code.toUpperCase())) return null
+      let created = 0
+      // SİLİNMİŞLER dâhil tüm konumları koda göre indeksle (UNIQUE(code) çakışmasını önle).
+      const all = await db.locations.toArray()
+      const known = new Map<string, Location>()
+      for (const l of all) known.set(l.code.toUpperCase(), l)
+
+      /**
+       * "Bul, dirilt ya da oluştur":
+       *   • Aktif konum varsa yeniden kullanılır (çocuklar doğru ebeveyne/yola bağlanır).
+       *   • Silinmiş konum varsa DİRİLTİLİR (aynı id korunur — UNIQUE çakışması olmaz).
+       *   • Yoksa yeni oluşturulur.
+       */
+      const ensure = async (code: string, name: string | null, type: LocationType, pParentId: string | null, pPath: string, countIt: boolean) => {
+        const hit = known.get(code.toUpperCase())
+        if (hit && !hit.deleted_at) return { id: hit.id, path: hit.path }
+        if (hit && hit.deleted_at) {
+          const revived: Location = { ...hit, parent_id: pParentId, name, type, path: pPath, deleted_at: null }
+          await saveLocation(revived)
+          known.set(code.toUpperCase(), revived)
+          if (countIt) created++
+          return { id: hit.id, path: pPath }
+        }
         const id = uuidv7()
-        await saveLocation({
+        const made: Location = {
           id, parent_id: pParentId, code, name, type, path: pPath,
           photo_id: null, capacity_note: null, sort_order: sort++, updated_at: '', deleted_at: null,
-        })
-        existing.add(code.toUpperCase())
-        return id
+        }
+        await saveLocation(made)
+        known.set(code.toUpperCase(), made)
+        if (countIt) created++
+        return { id, path: pPath }
       }
 
-      // 1) Dolap
+      // 1) Dolap (kendisi varsa yeniden kullanılır — altına eklemeye devam)
       let cabId = parent?.id ?? null
       let cabPath = parent?.path ?? ''
       if (createCabinet) {
         const path = parent ? `${parent.path}/${pfx}` : pfx
-        const id = await mk(pfx, cabName.trim() || null, 'cabinet', parent?.id ?? null, path)
-        if (id) { cabId = id; cabPath = path } else { cabId = null; cabPath = pfx }
+        const cab = await ensure(pfx, cabName.trim() || null, 'cabinet', parent?.id ?? null, path, false)
+        cabId = cab.id; cabPath = cab.path
       }
-      if (cabPath === '') cabPath = pfx // güvenlik
+      if (cabPath === '') cabPath = pfx // kök güvenliği
 
       // 2) Çekmeceler
-      let created = 0
       if (structure === 'flat') {
         for (let i = 1; i <= nDraw; i++) {
           const code = `${pfx}-${pad2(i)}`
-          const id = await mk(code, null, 'drawer', cabId, `${cabPath}/${code}`)
-          if (id) created++
+          await ensure(code, null, 'drawer', cabId, `${cabPath}/${code}`, true)
         }
       } else {
         for (let m = 1; m <= nMod; m++) {
           const mCode = `${pfx}-${pad2(m)}`
-          const mId = await mk(mCode, `${t('loc_type.shelf')} ${m}`, 'shelf', cabId, `${cabPath}/${mCode}`)
-          const mPath = `${cabPath}/${mCode}`
+          const shelf = await ensure(mCode, `${t('loc_type.shelf')} ${m}`, 'shelf', cabId, `${cabPath}/${mCode}`, false)
           for (let k = 1; k <= nDraw; k++) {
             const code = `${mCode}-${k}`
-            const id = await mk(code, null, 'drawer', mId ?? cabId, `${mPath}/${code}`)
-            if (id) created++
+            // Yol, gerçek ebeveynin (mevcut ya da yeni raf) yolundan türetilir.
+            await ensure(code, null, 'drawer', shelf.id, `${shelf.path}/${code}`, true)
           }
         }
       }

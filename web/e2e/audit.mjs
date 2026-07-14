@@ -660,6 +660,18 @@ await sect('L-locations', {}, async ({ page, pageErrors }) => {
   const s8drawers = locsL4.filter((l) => l.parent_id === s8?.id && l.type === 'drawer')
   check('L4b toplu üret: dolap + 4 çekmece (S8-01..S8-04)', !!s8 && s8drawers.length === 4 && locsL4.some((l) => l.code === 'S8-01' && l.path === 'S8/S8-01'), `drawers=${s8drawers.length}`)
 
+  // L4c: AYNI önekle tekrar üret — yeni çekmeceler VAR OLAN dolaba bağlanır (kök yetim olmaz)
+  await page.getByRole('button', { name: 'Toplu üret' }).click(); await page.waitForTimeout(300)
+  const gen2 = page.locator('.border-accent\\/40')
+  await gen2.locator('input.font-mono').fill('S8')
+  await gen2.locator('input[type="number"]').last().fill('6'); await page.waitForTimeout(200)
+  await gen2.getByRole('button', { name: 'Oluştur' }).click(); await page.waitForTimeout(700)
+  const locsL4c = await dexie(page, 'locations')
+  const s8b = locsL4c.find((l) => l.code === 'S8' && !l.deleted_at)
+  const newD = locsL4c.find((l) => l.code === 'S8-05')
+  const noOrphan = !locsL4c.some((l) => /^S8-\d\d$/.test(l.code) && l.parent_id === null)
+  check('L4c mevcut dolaba ekleme: yeni çekmece dolaba bağlı, kök yetim yok', newD?.parent_id === s8b?.id && newD?.path === 'S8/S8-05' && noOrphan, `parent=${newD?.parent_id} path=${newD?.path} noOrphan=${noOrphan}`)
+
   // L5: silme guard — çocuğu olan dolap (S8) silinemez
   await page.getByRole('button', { name: 'Konumlar', exact: true }).click().catch(() => {}); await page.waitForTimeout(200)
   const rowS8 = page.locator('.row', { hasText: 'S8' }).first()
@@ -680,7 +692,16 @@ await sect('L-locations', {}, async ({ page, pageErrors }) => {
   // L8: yeni konum outbox'a upsert olarak yazıldı
   const outL = await dexie(page, 'outbox')
   check('L8 konum işlemleri outbox\'ta (upsert location)', outL.some((o) => o.type === 'upsert' && o.entity === 'location'))
-  check('L9 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+  // L10: kod/üst düzenlemede alt konum yolları (path) da güncellenir
+  await page.getByRole('button', { name: 'Konumlar', exact: true }).click().catch(() => {}); await page.waitForTimeout(200)
+  await page.locator('.row', { hasText: 'S3' }).first().getByRole('button', { name: 'Düzenle' }).click(); await page.waitForTimeout(300)
+  await page.locator('.rounded-xl.border input.font-mono').fill('S3X')
+  await page.locator('.rounded-xl.border').getByRole('button', { name: 'Kaydet' }).click(); await page.waitForTimeout(700)
+  const locsL10 = await dexie(page, 'locations')
+  const cab10 = locsL10.find((l) => l.id === 'cab')
+  const leaf10 = locsL10.find((l) => l.id === 'c11')
+  check('L10 kod düzenlemede alt konum path\'i cascade güncellendi', cab10?.code === 'S3X' && cab10?.path === 'S3X' && leaf10?.path === 'S3X/S3-01/S3-01-1', `cab=${cab10?.path} leaf=${leaf10?.path}`)
+  check('L11 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
 // ---------------------------------------------------------------------------

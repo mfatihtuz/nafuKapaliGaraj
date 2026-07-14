@@ -90,7 +90,7 @@ export function useStockAtLocation(locationId: string | undefined): StockWithPar
   )
 }
 
-/** Bir parçanın bulunduğu konumlar + miktar (Parça detay). */
+/** Bir parçanın bulunduğu konumlar + miktar (Parça detay). Tükenmiş (0) satırlar gizli. */
 export function useLocationsForPart(partId: string | undefined): StockWithLocation[] {
   return useLiveQuery(
     async () => {
