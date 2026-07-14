@@ -2,7 +2,7 @@
 // UI asla doğrudan API'ye yazmaz (ARCHITECTURE §1, SYNC_PROTOCOL §5.4).
 
 import { db } from './dexie'
-import type { Part, Location, Category, StockLevel, TxReason, Transaction } from './types'
+import type { Part, Location, Category, Stock, StockLevel, TxReason, Transaction } from './types'
 import { uuidv7 } from '../lib/uuid'
 import { nowIso } from '../lib/format'
 import { enqueue } from '../sync/outbox'
@@ -106,6 +106,36 @@ export async function setLevel(
   await applyTx(tx)
   await enqueue({ type: 'stock_move', data: tx })
   engine.schedule()
+}
+
+/**
+ * Bir parçayı bir çekmeceden başka bir çekmeceye taşır (konum revizyonu).
+ * Defter mantığıyla: kaynaktan çıkar, hedefe ekle — stok kayıpsız korunur.
+ *   • Miktarlı: mevcut adet transfer edilir; kaynak 0'a düşer (listeden gizlenir).
+ *   • Doluluk: hedef, kaynağın doluluğunu alır; kaynak BİTTİ olur.
+ *   • Takipsiz: hedefte varlık kaydı oluşturulur.
+ */
+export async function movePartStock(
+  part: Part,
+  fromLocationId: string,
+  toLocationId: string,
+  stock: Stock | undefined,
+): Promise<void> {
+  if (fromLocationId === toLocationId) return
+
+  if (part.count_mode === 'exact') {
+    const qty = Number(stock?.qty ?? 0)
+    if (qty !== 0) {
+      await moveStock({ partId: part.id, locationId: fromLocationId, delta: -qty, reason: 'transfer' })
+    }
+    await moveStock({ partId: part.id, locationId: toLocationId, delta: qty, reason: 'transfer' })
+  } else if (part.count_mode === 'level') {
+    await setLevel(part.id, toLocationId, stock?.level ?? 'full')
+    await setLevel(part.id, fromLocationId, 'empty')
+  } else {
+    // takipsiz: yalnızca varlık
+    await moveStock({ partId: part.id, locationId: toLocationId, delta: 0, reason: 'transfer' })
+  }
 }
 
 /**

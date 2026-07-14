@@ -9,6 +9,15 @@ export interface StockWithPart { stock: Stock; part: Part }
 export interface StockWithLocation { stock: Stock; location: Location }
 export interface SearchHit { part: Part; places: StockWithLocation[]; categoryName: string | null }
 
+/**
+ * "Tükenmiş" satır: miktarlı bir parçanın adedi 0'a inmiş (taşınmış/tüketilmiş) ve
+ * doluluk bilgisi yok. Konum ve parça listelerinde gizlenir — defterde kalır.
+ * Doluluk (BİTTİ dâhil) ve takipsiz satırlar her zaman görünür.
+ */
+function isExhausted(part: Part, stock: Stock): boolean {
+  return part.count_mode === 'exact' && Number(stock.qty) <= 0 && stock.level == null
+}
+
 export function useParts(): Part[] {
   return useLiveQuery(
     () => db.parts.filter((p) => !p.deleted_at).sortBy('name'),
@@ -67,7 +76,7 @@ export function useStockAtLocation(locationId: string | undefined): StockWithPar
       const out: StockWithPart[] = []
       for (const stock of rows) {
         const part = await db.parts.get(stock.part_id)
-        if (part && !part.deleted_at) out.push({ stock, part })
+        if (part && !part.deleted_at && !isExhausted(part, stock)) out.push({ stock, part })
       }
       out.sort((a, b) => a.part.name.localeCompare(b.part.name, 'tr'))
       return out
@@ -82,9 +91,11 @@ export function useLocationsForPart(partId: string | undefined): StockWithLocati
   return useLiveQuery(
     async () => {
       if (!partId) return []
+      const part = await db.parts.get(partId)
       const rows = await db.stock.where('part_id').equals(partId).toArray()
       const out: StockWithLocation[] = []
       for (const stock of rows) {
+        if (part && isExhausted(part, stock)) continue
         const location = await db.locations.get(stock.location_id)
         if (location && !location.deleted_at) out.push({ stock, location })
       }
@@ -147,6 +158,7 @@ export function useSearch(query: string, categoryId = '', includeQuarantine = fa
         const stockRows = await db.stock.where('part_id').equals(part.id).toArray()
         const places: StockWithLocation[] = []
         for (const stock of stockRows) {
+          if (isExhausted(part, stock)) continue
           const location = await db.locations.get(stock.location_id)
           if (!location || location.deleted_at) continue
           if (!includeQuarantine && location.type === 'quarantine') continue

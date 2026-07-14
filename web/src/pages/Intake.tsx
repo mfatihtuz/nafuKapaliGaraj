@@ -4,7 +4,7 @@ import { AppHeader, Container } from '../components/Layout'
 import { useCategories, useLocations } from '../db/queries'
 import { AttributeForm } from '../components/AttributeForm'
 import type { Category, Part, PartAttributes, StockLevel } from '../db/types'
-import { buildSku, skuKeys, autoName } from '../lib/sku'
+import { buildSku, autoName } from '../lib/sku'
 import { UNITS } from '../lib/units'
 import { normalize } from '../lib/normalize'
 import { uuidv7 } from '../lib/uuid'
@@ -89,11 +89,10 @@ export function Intake() {
   const locationMatch = locations.find((l) => l.code.toUpperCase() === locCode.trim().toUpperCase())
   const mode = category?.default_count_mode ?? 'exact'
 
+  // Yalnızca "zorunlu" işaretli alanlar mecburi. "Koda girer" bir alanı zorunlu KILMAZ;
+  // boş bırakılırsa SKU'dan o parça düşer (buildSku ayraçları temizler).
   const requiredKeys = category
-    ? new Set<string>([
-        ...skuKeys(category.sku_template),
-        ...(category.attribute_schema ?? []).filter((d) => d.required).map((d) => d.key),
-      ])
+    ? new Set<string>((category.attribute_schema ?? []).filter((d) => d.required).map((d) => d.key))
     : new Set<string>()
   const attrsComplete = [...requiredKeys].every((k) => {
     const v = attrs[k]

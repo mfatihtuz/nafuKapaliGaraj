@@ -84,9 +84,15 @@
     "min_qty": "Kritik stok (altına düşünce uyar)",
     "manufacturer": "Üretici",
     "mpn": "Üretici kodu",
-    "delete_confirm": "Bu parça gizlensin mi? Kayıtları silinmez, listelerden kaldırılır.",
+    "delete_confirm": "Bu parça depodan kaldırılsın mı? Hareket kayıtları silinmez, listelerden gizlenir.",
     "edit": "Parçayı düzenle",
-    "name": "Ad"
+    "name": "Ad",
+    "move": "Taşı",
+    "move_to": "Yeni konum kodu, örn. S1-07",
+    "moved": "Taşındı: {code}",
+    "danger_zone": "Depodan kaldır",
+    "archive": "Bu parçayı depodan kaldır",
+    "archive_hint": "Parça arama ve listelerden gizlenir. Hareket geçmişi ve kayıtları korunur; istenirse geri alınabilir."
   },
   "count_mode": {
     "exact": "Miktarlı",
@@ -211,8 +217,9 @@
       "parent": "Üst kategori",
       "no_parent": "Ana kategori (üst yok)",
       "count_mode": "Varsayılan sayım",
-      "template": "Kod şablonu",
-      "template_hint": "Örn. R-{paket}-{deger}. {alan} yer tutucuları özelliklerden doldurulur.",
+      "template": "Parça kodu şablonu",
+      "template_auto": "otomatik",
+      "template_hint": "Aşağıdaki özelliklerden 'koda girer' işaretlediklerinden otomatik oluşur. İşareti kaldırınca çıkar, tekrar işaretlersen en sona eklenir.",
       "delete_confirm": "Bu kategori gizlensin mi?",
       "empty": "Henüz kategori yok"
     },

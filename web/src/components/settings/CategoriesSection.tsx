@@ -4,6 +4,7 @@ import type { AttributeDef, Category, CountMode } from '../../db/types'
 import { saveCategory, softDeleteCategory } from '../../db/actions'
 import { uuidv7 } from '../../lib/uuid'
 import { foldToAscii } from '../../lib/normalize'
+import { deriveSkuTemplate } from '../../lib/sku'
 import { useT } from '../../i18n'
 import { useToast } from '../Toast'
 import { IconPlus, IconTrash, IconEdit, IconChevronRight } from '../icons'
@@ -87,6 +88,19 @@ export function CategoriesSection({ canWrite }: { canWrite: boolean }) {
   const roots = useMemo(() => categories.filter((c) => !c.parent_id), [categories])
   const childrenOf = (id: string) => categories.filter((c) => c.parent_id === id)
   const maxSort = categories.reduce((m, c) => Math.max(m, c.sort_order), 0)
+
+  /**
+   * Taslağı günceller ve SKU şablonunu "koda girer" işaretlerinden yeniden türetir.
+   * Kod veya özellikler değişince çağrılır — şablon her zaman kutucuklarla senkron kalır.
+   */
+  function patchDraft(patch: Partial<Category>) {
+    setDraft((d) => {
+      if (!d) return d
+      const next = { ...d, ...patch }
+      next.sku_template = deriveSkuTemplate(next.code, next.attribute_schema ?? [], d.sku_template)
+      return next
+    })
+  }
   const [open, setOpen] = useState<Set<string>>(() => new Set())
   const toggle = (id: string) =>
     setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -170,7 +184,7 @@ export function CategoriesSection({ canWrite }: { canWrite: boolean }) {
             </div>
             <div>
               <label className="field-label">{t('settings.categories.code')}</label>
-              <input className="input font-mono uppercase" value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} />
+              <input className="input font-mono uppercase" value={draft.code} onChange={(e) => patchDraft({ code: e.target.value })} />
               <p className="field-hint">{t('settings.categories.code_hint')}</p>
             </div>
             <div>
@@ -187,13 +201,16 @@ export function CategoriesSection({ canWrite }: { canWrite: boolean }) {
               </select>
             </div>
             <div className="sm:col-span-2">
-              <label className="field-label">{t('settings.categories.template')}</label>
-              <input className="input font-mono text-sm" value={draft.sku_template ?? ''} onChange={(e) => setDraft({ ...draft, sku_template: e.target.value })} placeholder="R-{paket}-{deger}" />
-              <p className="field-hint">{t('settings.categories.template_hint')}</p>
+              <label className="field-label">{t('settings.categories.title')} — {t('part.attributes')}</label>
+              <AttributeEditor schema={draft.attribute_schema ?? []} onChange={(s) => patchDraft({ attribute_schema: s })} />
             </div>
             <div className="sm:col-span-2">
-              <label className="field-label">{t('settings.categories.title')} — {t('part.attributes')}</label>
-              <AttributeEditor schema={draft.attribute_schema ?? []} onChange={(s) => setDraft({ ...draft, attribute_schema: s })} />
+              <label className="field-label">{t('settings.categories.template')}</label>
+              <div className="flex items-center gap-2 rounded-lg border border-line bg-brand-50 px-3 py-2.5">
+                <span className="font-mono text-sm font-bold text-brand-800">{draft.sku_template || draft.code || '—'}</span>
+                <span className="ml-auto text-[11px] text-brand-300">{t('settings.categories.template_auto')}</span>
+              </div>
+              <p className="field-hint">{t('settings.categories.template_hint')}</p>
             </div>
           </div>
           <div className="mt-4 flex justify-end gap-2">

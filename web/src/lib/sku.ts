@@ -54,3 +54,28 @@ export function skuKeys(template: string | null | undefined): string[] {
   while ((m = re.exec(template)) !== null) keys.push(m[1])
   return keys
 }
+
+/**
+ * SKU şablonunu "koda girer" (in_sku) işaretli özniteliklerden türetir.
+ *   • Önek daima kategori kodu:              KOD
+ *   • İşaretlenen her alan sona eklenir:     KOD-{x}, sonra KOD-{x}-{y}
+ *   • İşaret kaldırılırsa alan şablondan çıkar.
+ *   • Kaldırılıp tekrar işaretlenen alan EN SONA eklenir (mevcut sıra korunur).
+ * Böylece kullanıcı "koda girer" kutucuğunu açıp kapadıkça şablon canlı güncellenir.
+ */
+export function deriveSkuTemplate(
+  code: string,
+  schema: { key: string; in_sku?: boolean }[],
+  prevTemplate?: string | null,
+): string {
+  const inSkuKeys = schema.filter((a) => a.in_sku && a.key).map((a) => a.key)
+  const inSkuSet = new Set(inSkuKeys)
+  // Önceki şablondaki sırayı koru (yalnızca hâlâ işaretli olanlar).
+  const kept = skuKeys(prevTemplate).filter((k) => inSkuSet.has(k))
+  const seen = new Set(kept)
+  // Yeni işaretlenenleri sona ekle.
+  const appended = inSkuKeys.filter((k) => !seen.has(k))
+  const ordered = [...kept, ...appended]
+  const prefix = foldToAscii(code).toUpperCase().replace(/[^A-Z0-9]/g, '')
+  return [prefix, ...ordered.map((k) => `{${k}}`)].filter(Boolean).join('-')
+}

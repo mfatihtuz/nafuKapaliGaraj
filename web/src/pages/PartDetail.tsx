@@ -2,19 +2,87 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AppHeader, Container } from '../components/Layout'
 import {
-  usePart, useCategory, useLocationsForPart, useTransactionsForPart,
+  usePart, useCategory, useLocationsForPart, useTransactionsForPart, useLocations,
 } from '../db/queries'
-import type { CountMode, Part } from '../db/types'
-import { savePart, softDeletePart } from '../db/actions'
+import type { CountMode, Part, Stock, Location } from '../db/types'
+import { savePart, softDeletePart, movePartStock } from '../db/actions'
 import { LEVEL_LABEL, REASON_LABEL, timeAgo } from '../lib/format'
 import { UNITS } from '../lib/units'
 import { StockControl } from '../components/StockControl'
 import { useT } from '../i18n'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
-import { IconEdit, IconTrash, IconCheck } from '../components/icons'
+import { IconEdit, IconTrash, IconCheck, IconChevronRight, IconBack } from '../components/icons'
 
 const MODES: CountMode[] = ['exact', 'level', 'unmanaged']
+
+/** Bir konum satırı: kod + stok kontrolü + "Taşı" (başka çekmeceye). */
+function LocationRow({
+  part, stock, location, locations, canWrite,
+}: {
+  part: Part; stock: Stock; location: Location; locations: Location[]; canWrite: boolean
+}) {
+  const { t } = useT()
+  const toast = useToast()
+  const [moving, setMoving] = useState(false)
+  const [dest, setDest] = useState('')
+
+  async function doMove() {
+    const target = locations.find((l) => l.code.toUpperCase() === dest.trim().toUpperCase())
+    if (!target) {
+      toast.show(t('scan.not_found', { code: dest }), 'error')
+      return
+    }
+    if (target.id === location.id) { setMoving(false); return }
+    await movePartStock(part, location.id, target.id, stock)
+    toast.show(t('part.moved', { code: target.code }), 'success')
+    setMoving(false)
+    setDest('')
+  }
+
+  return (
+    <div className="border-b border-line py-3 last:border-0">
+      <div className="flex items-center justify-between gap-3">
+        <Link to={`/l/${encodeURIComponent(location.code)}`} className="loc-code text-xl">
+          {location.code}
+        </Link>
+        <div className="flex items-center gap-2">
+          <StockControl part={part} stock={stock} locationId={location.id} />
+          {canWrite && (
+            <button
+              onClick={() => setMoving((m) => !m)}
+              className="btn-icon h-9 w-9 text-brand-400 hover:bg-brand-50"
+              title={t('part.move')}
+            >
+              <IconChevronRight size={18} />
+            </button>
+          )}
+        </div>
+      </div>
+      {moving && (
+        <div className="mt-2 flex items-center gap-2 rounded-lg bg-brand-50 p-2">
+          <input
+            list="move-loc-codes"
+            value={dest}
+            onChange={(e) => setDest(e.target.value)}
+            placeholder={t('part.move_to')}
+            className="input h-9 flex-1 font-mono uppercase"
+            autoCapitalize="characters"
+          />
+          <datalist id="move-loc-codes">
+            {locations.map((l) => <option key={l.id} value={l.code}>{l.name ?? l.path}</option>)}
+          </datalist>
+          <button onClick={() => void doMove()} className="btn-primary h-9 px-3 text-sm">
+            {t('part.move')}
+          </button>
+          <button onClick={() => { setMoving(false); setDest('') }} className="btn-ghost h-9 px-2 text-sm">
+            <IconBack size={15} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function PartDetail() {
   const { id = '' } = useParams()
@@ -26,6 +94,7 @@ export function PartDetail() {
   const category = useCategory(part?.category_id)
   const places = useLocationsForPart(id)
   const history = useTransactionsForPart(id)
+  const locations = useLocations()
 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Part | null>(null)
@@ -180,12 +249,14 @@ export function PartDetail() {
           ) : (
             <div className="flex flex-col">
               {places.map(({ stock, location }) => (
-                <div key={location.id} className="flex items-center justify-between gap-3 border-b border-line py-3 last:border-0">
-                  <Link to={`/l/${encodeURIComponent(location.code)}`} className="loc-code text-xl">
-                    {location.code}
-                  </Link>
-                  <StockControl part={part} stock={stock} locationId={location.id} />
-                </div>
+                <LocationRow
+                  key={location.id}
+                  part={part}
+                  stock={stock}
+                  location={location}
+                  locations={locations}
+                  canWrite={canWrite}
+                />
               ))}
             </div>
           )}
@@ -218,10 +289,15 @@ export function PartDetail() {
           )}
         </div>
 
-        {editing && (
-          <button onClick={() => void remove()} className="btn-danger w-full">
-            <IconTrash size={18} /> {t('common.delete')}
-          </button>
+        {/* Tehlike bölgesi — parçayı depodan kaldır (arşivle). Kayıtlar silinmez. */}
+        {canWrite && !editing && (
+          <div className="card mt-4 border-red-100 p-4">
+            <div className="field-label text-red-600">{t('part.danger_zone')}</div>
+            <p className="mb-3 text-xs text-brand-400">{t('part.archive_hint')}</p>
+            <button onClick={() => void remove()} className="btn-danger w-full">
+              <IconTrash size={18} /> {t('part.archive')}
+            </button>
+          </div>
         )}
       </Container>
     </>
