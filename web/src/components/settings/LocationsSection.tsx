@@ -66,13 +66,25 @@ export function LocationsSection({ canWrite }: { canWrite: boolean }) {
     return parent ? `${parent.path}/${code}` : code
   }
 
-  /** Alt konumların materyalize yollarını (path) yeniden hesaplayıp kaydeder. */
-  async function cascadePaths(parentId: string, parentPath: string) {
-    for (const child of childrenOf(parentId)) {
-      const cp = `${parentPath}/${child.code}`
-      if (child.path !== cp) await saveLocation({ ...child, path: cp })
-      await cascadePaths(child.id, cp)
+  /**
+   * Bir konum düzenlenince alt ağacın KOD ve YOL'unu yeniden hesaplar.
+   *  • Kod öneki değişirse (S1 → SB105) çocuk kodları da güncellenir:
+   *    S1-01 → SB105-01, S1-01-1 → SB105-01-1 (önek eşleşen kısmı değişir).
+   *  • Önek dışı kodlu çocuklar korunur; yalnızca yol'ları güncellenir.
+   * Her düğüm için {id, code, path} planı döner (önce çakışma kontrolü, sonra kayıt).
+   */
+  function planSubtree(rootId: string, oldPrefix: string, newPrefix: string, parentPath: string) {
+    const out: { id: string; code: string; path: string }[] = []
+    const walk = (parentId: string, oldP: string, newP: string, pPath: string) => {
+      for (const child of childrenOf(parentId)) {
+        const cCode = child.code.startsWith(`${oldP}-`) ? newP + child.code.slice(oldP.length) : child.code
+        const cPath = `${pPath}/${cCode}`
+        out.push({ id: child.id, code: cCode, path: cPath })
+        walk(child.id, child.code, cCode, cPath)
+      }
     }
+    walk(rootId, oldPrefix, newPrefix, parentPath)
+    return out
   }
 
   async function save() {
@@ -88,12 +100,27 @@ export function LocationsSection({ canWrite }: { canWrite: boolean }) {
     if (draft.parent_id && selfAndDescendants(draft.id).has(draft.parent_id)) {
       toast.show(t('settings.locations.cycle'), 'error'); return
     }
-    const newPath = pathFor(draft.parent_id, code)
-    await saveLocation({ ...draft, code, path: newPath, name: draft.name?.trim() || null })
-    // Kod veya üst değişince alt konumların yolları BAYATLAR — etiket baskısı ve konum
-    // araması eski yola takılır. Bu yüzden tüm alt ağacın path'i yeniden yazılır.
+
     const old = byId.get(draft.id)
-    if (old && old.path !== newPath) await cascadePaths(draft.id, newPath)
+    const newPath = pathFor(draft.parent_id, code)
+    // Kod veya üst değişti mi? Alt ağacı da güncellememiz gerekir.
+    const needsCascade = !!old && (old.code !== code || old.path !== newPath)
+    const plan = needsCascade ? planSubtree(draft.id, old!.code, code, newPath) : []
+
+    // Çakışma: yeni çocuk kodları, alt ağaç DIŞINDAKİ bir konumla çakışmasın.
+    const subtreeIds = selfAndDescendants(draft.id)
+    const externalCodes = new Set(all.filter((l) => !subtreeIds.has(l.id)).map((l) => l.code.toUpperCase()))
+    const clash = plan.find((r) => externalCodes.has(r.code.toUpperCase()))
+    if (clash) { toast.show(t('settings.locations.rename_collision', { code: clash.code }), 'error'); return }
+
+    await saveLocation({ ...draft, code, path: newPath, name: draft.name?.trim() || null })
+    for (const r of plan) {
+      const loc = byId.get(r.id)
+      if (loc && (loc.code !== r.code || loc.path !== r.path)) {
+        await saveLocation({ ...loc, code: r.code, path: r.path })
+      }
+    }
+    if (needsCascade && plan.length > 0) toast.show(t('settings.locations.cascaded', { n: plan.length }), 'info')
     setDraft(null)
     toast.show(t('common.save'), 'success')
   }

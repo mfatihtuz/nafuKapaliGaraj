@@ -270,6 +270,8 @@
       "need_code": "Kod gerekli",
       "code_taken": "\"{code}\" kodu zaten kullanılıyor — konum kodları tekil olmalı.",
       "cycle": "Bir konum kendi alt konumuna bağlanamaz.",
+      "rename_collision": "\"{code}\" kodu başka bir konumda var — yeniden adlandırma çakışıyor.",
+      "cascaded": "{n} alt konumun kodu/adresi de güncellendi.",
       "has_children": "Bu konumun alt konumları var — önce onları silin.",
       "has_stock": "Bu konumda (veya altında) parça var — önce parçaları taşıyın.",
       "delete_confirm": "{code} konumu silinsin mi?",

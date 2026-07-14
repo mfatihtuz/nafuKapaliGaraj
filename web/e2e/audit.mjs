@@ -720,7 +720,10 @@ await sect('L-locations', {}, async ({ page, pageErrors }) => {
   const locsL10 = await dexie(page, 'locations')
   const cab10 = locsL10.find((l) => l.id === 'cab')
   const leaf10 = locsL10.find((l) => l.id === 'c11')
-  check('L10 kod düzenlemede alt konum path\'i cascade güncellendi', cab10?.code === 'S3X' && cab10?.path === 'S3X' && leaf10?.path === 'S3X/S3-01/S3-01-1', `cab=${cab10?.path} leaf=${leaf10?.path}`)
+  check('L10 kod düzenlemede alt konum path\'i cascade güncellendi', cab10?.code === 'S3X' && cab10?.path === 'S3X' && leaf10?.path === 'S3X/S3X-01/S3X-01-1', `cab=${cab10?.path} leaf=${leaf10?.path}`)
+  // L10b: alt KODLAR da önek-değişimiyle güncellenir (S3-01→S3X-01, S3-01-1→S3X-01-1)
+  const shelf10 = locsL10.find((l) => l.id === 'mod1')
+  check('L10b alt kodlar önek-değişimiyle güncellendi', shelf10?.code === 'S3X-01' && leaf10?.code === 'S3X-01-1', `shelf=${shelf10?.code} leaf=${leaf10?.code}`)
   check('L11 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
