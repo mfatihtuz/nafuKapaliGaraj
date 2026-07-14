@@ -1,17 +1,20 @@
 import { NavLink } from 'react-router-dom'
 import { useT } from '../i18n'
-import { NAV_ITEMS } from './navItems'
+import { navItemsFor } from './navItems'
+import { useAuth } from '../auth/AuthContext'
 
 /** Mobil alt navigasyon (lg altında). Masaüstünde kenar çubuğu kullanılır. */
 export function BottomNav() {
   const { t } = useT()
+  const { canWrite } = useAuth()
+  const items = navItemsFor(canWrite)
   return (
     <nav
       className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 backdrop-blur lg:hidden"
       style={{ paddingBottom: 'var(--safe-bottom)' }}
     >
       <div className="mx-auto flex max-w-md">
-        {NAV_ITEMS.map(({ to, key, Icon }) => (
+        {items.map(({ to, key, Icon }) => (
           <NavLink
             key={to}
             to={to}

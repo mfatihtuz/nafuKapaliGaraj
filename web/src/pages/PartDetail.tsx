@@ -10,6 +10,7 @@ import { LEVEL_LABEL, REASON_LABEL, timeAgo } from '../lib/format'
 import { UNITS } from '../lib/units'
 import { StockControl } from '../components/StockControl'
 import { useT } from '../i18n'
+import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
 import { IconEdit, IconTrash, IconCheck } from '../components/icons'
 
@@ -18,6 +19,7 @@ const MODES: CountMode[] = ['exact', 'level', 'unmanaged']
 export function PartDetail() {
   const { id = '' } = useParams()
   const { t } = useT()
+  const { canWrite } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
   const part = usePart(id)
@@ -72,7 +74,7 @@ export function PartDetail() {
       <AppHeader
         back
         right={
-          editing ? (
+          !canWrite ? null : editing ? (
             <button onClick={() => void save()} className="btn-primary h-9 px-3 text-sm">
               <IconCheck size={16} /> {t('common.save')}
             </button>

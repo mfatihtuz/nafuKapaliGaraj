@@ -62,6 +62,10 @@
     "system": "Sistem konumu"
   },
   "level": { "full": "DOLU", "low": "AZ", "empty": "BİTTİ", "unknown": "—" },
+  "perm": {
+    "readonly_title": "Yalnızca görüntüleme",
+    "no_add": "Misafir hesabı parça ekleyemez veya düzenleyemez. Yetki için yöneticinize başvurun."
+  },
   "search": {
     "no_results": "Eşleşme yok",
     "no_location": "Konum atanmamış",

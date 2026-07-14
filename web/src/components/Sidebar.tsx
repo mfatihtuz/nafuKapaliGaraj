@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { NAV_ITEMS } from './navItems'
+import { navItemsFor } from './navItems'
 import { useT } from '../i18n'
 import { useAuth } from '../auth/AuthContext'
 import { IconBox, IconLogout } from './icons'
@@ -9,7 +9,8 @@ const ROLE_LABEL: Record<string, string> = { owner: 'Yönetici', member: 'Üye',
 /** Masaüstü kenar çubuğu (lg+). Mobilde gizli — bunun yerine alt navigasyon. */
 export function Sidebar() {
   const { t } = useT()
-  const { auth, logout } = useAuth()
+  const { auth, logout, canWrite } = useAuth()
+  const items = navItemsFor(canWrite)
 
   return (
     <aside className="no-print fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-brand-800 text-white lg:flex">
@@ -24,7 +25,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-2">
-        {NAV_ITEMS.map(({ to, key, Icon }) => (
+        {items.map(({ to, key, Icon }) => (
           <NavLink
             key={to}
             to={to}

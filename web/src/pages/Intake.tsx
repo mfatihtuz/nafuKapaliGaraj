@@ -12,6 +12,7 @@ import { db } from '../db/dexie'
 import { savePart, moveStock, setLevel } from '../db/actions'
 import { LEVEL_LABEL } from '../lib/format'
 import { useT } from '../i18n'
+import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
 import { IconCheck, IconChevronRight, IconBack, IconSearch, IconFolder } from '../components/icons'
 
@@ -51,6 +52,7 @@ function Stepper({ step, labels }: { step: number; labels: string[] }) {
 
 export function Intake() {
   const { t } = useT()
+  const { canWrite } = useAuth()
   const toast = useToast()
   const [searchParams] = useSearchParams()
   const categories = useCategories()
@@ -143,6 +145,21 @@ export function Intake() {
     } finally {
       setBusy(false)
     }
+  }
+
+  // Misafir (viewer) parça ekleyemez.
+  if (!canWrite) {
+    return (
+      <>
+        <AppHeader title={t('intake.title')} />
+        <Container>
+          <div className="card card-pad mx-auto mt-8 max-w-md text-center">
+            <div className="text-lg font-semibold text-brand-800">{t('perm.readonly_title')}</div>
+            <p className="mt-2 text-sm text-brand-400">{t('perm.no_add')}</p>
+          </div>
+        </Container>
+      </>
+    )
   }
 
   return (

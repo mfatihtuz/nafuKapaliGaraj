@@ -3,6 +3,7 @@ import { AppHeader, Container } from '../components/Layout'
 import { useLocationByCode, useStockAtLocation } from '../db/queries'
 import { StockControl } from '../components/StockControl'
 import { useT } from '../i18n'
+import { useAuth } from '../auth/AuthContext'
 import { IconPlus, IconChevronRight } from '../components/icons'
 
 const SYSTEM_TYPES = ['intake', 'bench', 'quarantine', 'loan', 'project']
@@ -10,6 +11,7 @@ const SYSTEM_TYPES = ['intake', 'bench', 'quarantine', 'loan', 'project']
 export function LocationView() {
   const { code = '' } = useParams()
   const { t } = useT()
+  const { canWrite } = useAuth()
   const navigate = useNavigate()
   const location = useLocationByCode(code)
   const items = useStockAtLocation(location?.id)
@@ -73,13 +75,15 @@ export function LocationView() {
           )}
         </div>
 
-        <button
-          onClick={() => navigate(`/intake?location=${encodeURIComponent(location.code)}`)}
-          className="btn-primary mt-4 w-full"
-        >
-          <IconPlus size={20} />
-          {t('location.add_part')}
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => navigate(`/intake?location=${encodeURIComponent(location.code)}`)}
+            className="btn-primary mt-4 w-full"
+          >
+            <IconPlus size={20} />
+            {t('location.add_part')}
+          </button>
+        )}
 
         <Link to="/search" className="mt-3 flex items-center justify-center gap-1 text-sm text-brand-400">
           {t('nav.search')} <IconChevronRight size={16} />

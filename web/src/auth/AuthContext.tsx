@@ -10,6 +10,8 @@ interface AuthCtx {
   auth: AuthState | null
   loading: boolean
   authExpired: boolean
+  /** Misafir (viewer) yalnızca görüntüler; ekleme/düzenleme/stok hareketi yapamaz. */
+  canWrite: boolean
   login: (identifier: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
@@ -75,8 +77,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthExpired(false)
   }, [])
 
+  const canWrite = auth ? auth.role !== 'viewer' : false
+
   return (
-    <Ctx.Provider value={{ auth, loading, authExpired, login, logout, refresh }}>
+    <Ctx.Provider value={{ auth, loading, authExpired, canWrite, login, logout, refresh }}>
       {children}
     </Ctx.Provider>
   )
