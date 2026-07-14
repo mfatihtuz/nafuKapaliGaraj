@@ -7,7 +7,7 @@ import { searchMatch } from '../lib/normalize'
 
 export interface StockWithPart { stock: Stock; part: Part }
 export interface StockWithLocation { stock: Stock; location: Location }
-export interface SearchHit { part: Part; places: StockWithLocation[] }
+export interface SearchHit { part: Part; places: StockWithLocation[]; categoryName: string | null }
 
 export function useParts(): Part[] {
   return useLiveQuery(
@@ -107,18 +107,43 @@ export function useTransactionsForPart(partId: string | undefined) {
   )
 }
 
-/** Türkçe-duyarsız arama; her parça için bulunduğu yerleri (konum + stok) de döndürür. */
-export function useSearch(query: string, includeQuarantine = false): SearchHit[] {
+/**
+ * Türkçe-duyarsız arama + kategori filtresi + göz atma.
+ * - Sorgu ve kategori boşsa: TÜM envanter, ada göre sıralı.
+ * - Kategori seçiliyse: o kategori ve alt kategorileri.
+ * - Sorgu varsa: metne göre süzme. Hepsi birlikte uygulanır.
+ */
+export function useSearch(query: string, categoryId = '', includeQuarantine = false): SearchHit[] {
   return useLiveQuery(
     async () => {
       const q = query.trim()
-      if (q === '') return []
+      const categories = await db.categories.toArray()
+      const nameById = new Map(categories.map((c) => [c.id, c.name_tr]))
+
+      // Seçilen kategori + tüm alt kategorileri
+      let catSet: Set<string> | null = null
+      if (categoryId) {
+        catSet = new Set([categoryId])
+        let added = true
+        while (added) {
+          added = false
+          for (const c of categories) {
+            if (c.parent_id && catSet.has(c.parent_id) && !catSet.has(c.id)) {
+              catSet.add(c.id)
+              added = true
+            }
+          }
+        }
+      }
+
       const parts = await db.parts.filter((p) => !p.deleted_at).toArray()
       const hits: SearchHit[] = []
       for (const part of parts) {
-        const attrText = part.attributes ? Object.values(part.attributes).join(' ') : ''
-        if (!searchMatch(q, part.sku, part.name, part.mpn, part.tags, attrText)) continue
-
+        if (catSet && (!part.category_id || !catSet.has(part.category_id))) continue
+        if (q !== '') {
+          const attrText = part.attributes ? Object.values(part.attributes).join(' ') : ''
+          if (!searchMatch(q, part.sku, part.name, part.mpn, part.tags, attrText)) continue
+        }
         const stockRows = await db.stock.where('part_id').equals(part.id).toArray()
         const places: StockWithLocation[] = []
         for (const stock of stockRows) {
@@ -127,18 +152,12 @@ export function useSearch(query: string, includeQuarantine = false): SearchHit[]
           if (!includeQuarantine && location.type === 'quarantine') continue
           places.push({ stock, location })
         }
-        hits.push({ part, places })
+        hits.push({ part, places, categoryName: part.category_id ? nameById.get(part.category_id) ?? null : null })
       }
-      // Konumu bilinenler önce, sonra isme göre
-      hits.sort((a, b) => {
-        if ((b.places.length > 0 ? 1 : 0) !== (a.places.length > 0 ? 1 : 0)) {
-          return (b.places.length > 0 ? 1 : 0) - (a.places.length > 0 ? 1 : 0)
-        }
-        return a.part.name.localeCompare(b.part.name, 'tr')
-      })
-      return hits.slice(0, 100)
+      hits.sort((a, b) => a.part.name.localeCompare(b.part.name, 'tr'))
+      return hits.slice(0, 300)
     },
-    [query, includeQuarantine],
+    [query, categoryId, includeQuarantine],
     [],
   )
 }

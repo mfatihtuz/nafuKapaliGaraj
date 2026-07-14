@@ -4,7 +4,8 @@ import { AppHeader, Container } from '../components/Layout'
 import { useCategories, useLocations } from '../db/queries'
 import { AttributeForm } from '../components/AttributeForm'
 import type { Category, Part, PartAttributes, StockLevel } from '../db/types'
-import { buildSku, skuKeys } from '../lib/sku'
+import { buildSku, skuKeys, autoName } from '../lib/sku'
+import { UNITS } from '../lib/units'
 import { normalize } from '../lib/normalize'
 import { uuidv7 } from '../lib/uuid'
 import { db } from '../db/dexie'
@@ -62,6 +63,7 @@ export function Intake() {
   const [name, setName] = useState('')
   const [locCode, setLocCode] = useState(searchParams.get('location') ?? '')
   const [qty, setQty] = useState('')
+  const [unit, setUnit] = useState('adet')
   const [level, setLvl] = useState<StockLevel | null>(null)
   const [serial, setSerial] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -111,7 +113,7 @@ export function Intake() {
     setBusy(true)
     try {
       const existing = await db.parts.where('sku').equals(sku).first()
-      const finalName = name.trim() || `${category.name_tr} ${Object.values(attrs).filter(Boolean).join(' ')}`.trim()
+      const finalName = name.trim() || autoName(category, attrs)
       let partId: string
       if (existing && !existing.deleted_at) {
         partId = existing.id
@@ -120,7 +122,7 @@ export function Intake() {
         const part: Part = {
           id: existing?.id ?? uuidv7(), category_id: category.id, sku, name: finalName,
           mpn: null, manufacturer: null, attributes: attrs, tags: buildTags(finalName, attrs, category),
-          count_mode: mode, abc_class: 'C', min_qty: null, unit: 'adet',
+          count_mode: mode, abc_class: 'C', min_qty: null, unit: mode === 'exact' ? unit : 'adet',
           datasheet_url: null, photo_id: null, notes: null, updated_at: '', deleted_at: null,
         }
         partId = await savePart(part)
@@ -231,8 +233,18 @@ export function Intake() {
               <div className="mt-4">
                 {mode === 'exact' && (
                   <>
-                    <label className="field-label">{t('intake.qty')}</label>
-                    <input type="number" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} className="input" placeholder="0" />
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <label className="field-label">{t('intake.qty')}</label>
+                        <input type="number" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} className="input" placeholder="0" />
+                      </div>
+                      <div className="w-32">
+                        <label className="field-label">{t('intake.unit')}</label>
+                        <select className="select" value={unit} onChange={(e) => setUnit(e.target.value)}>
+                          {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                      </div>
+                    </div>
                     <p className="field-hint">{t('intake.qty_hint')}</p>
                   </>
                 )}

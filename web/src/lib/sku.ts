@@ -1,7 +1,7 @@
 // SKU şablon motoru (SPRINT_PLAN 1.9).
 // SKU daima ASCII/İngilizce (CLAUDE.md §5): 'R-{package}-{value}-{tolerance}' → 'R-0805-10K-1P'
 
-import type { PartAttributes } from '../db/types'
+import type { Category, PartAttributes } from '../db/types'
 import { foldToAscii } from './normalize'
 
 function skuToken(raw: string): string {
@@ -21,6 +21,28 @@ export function buildSku(template: string | null | undefined, attrs: PartAttribu
     return v === null || v === undefined || v === '' ? '' : skuToken(String(v))
   })
   return out.replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '')
+}
+
+/**
+ * Ad girilmediğinde okunur, kısa bir ad üretir — tekrarı önler (kart gri satırı SKU·kategori gösterir).
+ *   • Birimli öznitelik (Ω, F…) varsa:  "1000 Ω · Direnç"  (değer+birim + kategori)
+ *   • Birimli yoksa (kablo gibi):        "NYAF 2x0.75mm"    (öznitelik değerleri, kategori yok)
+ */
+export function autoName(category: Category, attrs: PartAttributes): string {
+  const schema = category.attribute_schema ?? []
+  const ordered = [...schema].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const withUnit: string[] = []
+  const plain: string[] = []
+  for (const def of ordered) {
+    const v = attrs[def.key]
+    if (v === null || v === undefined || String(v).trim() === '') continue
+    if (def.unit) withUnit.push(`${String(v).trim()} ${def.unit}`)
+    else if (def.in_sku) plain.push(String(v).trim())
+  }
+  if (withUnit.length) return `${withUnit.join(' ')} · ${category.name_tr}`
+  if (plain.length) return plain.join(' ')
+  const all = Object.values(attrs).map((x) => (x == null ? '' : String(x).trim())).filter(Boolean)
+  return all.length ? all.join(' ') : category.name_tr
 }
 
 /** Şablondaki tüm {key} anahtarlarını döndürür (SKU'yu etkileyen alanlar). */

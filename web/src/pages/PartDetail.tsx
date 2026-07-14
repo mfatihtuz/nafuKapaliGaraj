@@ -7,6 +7,7 @@ import {
 import type { CountMode, Part } from '../db/types'
 import { savePart, softDeletePart } from '../db/actions'
 import { LEVEL_LABEL, REASON_LABEL, formatQty, timeAgo } from '../lib/format'
+import { UNITS } from '../lib/units'
 import { useT } from '../i18n'
 import { useToast } from '../components/Toast'
 import { IconEdit, IconTrash, IconCheck } from '../components/icons'
@@ -122,16 +123,29 @@ export function PartDetail() {
             })}
           </div>
           {current.count_mode === 'exact' && (
-            <div>
-              <label className="field-label" htmlFor="minq">{t('part.min_qty')}</label>
-              <input
-                id="minq" type="number" inputMode="decimal" disabled={!editing}
-                className="input disabled:bg-brand-50"
-                value={current.min_qty ?? ''}
-                onChange={(e) =>
-                  setDraft({ ...current, min_qty: e.target.value === '' ? null : Number(e.target.value) })
-                }
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="field-label" htmlFor="unit">{t('intake.unit')}</label>
+                <select
+                  id="unit" disabled={!editing} className="select disabled:bg-brand-50"
+                  value={current.unit}
+                  onChange={(e) => setDraft({ ...current, unit: e.target.value })}
+                >
+                  {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                  {!UNITS.includes(current.unit as never) && <option value={current.unit}>{current.unit}</option>}
+                </select>
+              </div>
+              <div>
+                <label className="field-label" htmlFor="minq">{t('part.min_qty')}</label>
+                <input
+                  id="minq" type="number" inputMode="decimal" disabled={!editing}
+                  className="input disabled:bg-brand-50"
+                  value={current.min_qty ?? ''}
+                  onChange={(e) =>
+                    setDraft({ ...current, min_qty: e.target.value === '' ? null : Number(e.target.value) })
+                  }
+                />
+              </div>
             </div>
           )}
         </div>

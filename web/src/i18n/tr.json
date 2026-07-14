@@ -67,7 +67,8 @@
     "no_location": "Konum atanmamış",
     "show_quarantine": "Karantinadakileri de göster",
     "count": "{n} sonuç",
-    "prompt": "Aramak için yazmaya başlayın"
+    "all_categories": "Tüm kategoriler",
+    "empty_inventory": "Envanter boş. İlk parçayı Ekle sekmesinden girin."
   },
   "part": {
     "code": "Parça kodu",
@@ -84,10 +85,10 @@
     "name": "Ad"
   },
   "count_mode": {
-    "exact": "Adetli",
+    "exact": "Miktarlı",
     "level": "Doluluk",
     "unmanaged": "Takipsiz",
-    "exact_hint": "Tam sayı: artı/eksi ile miktar takibi",
+    "exact_hint": "Sayı + birim (adet, metre, gram…) ile takip",
     "level_hint": "Saymak yok: Dolu / Az / Bitti",
     "unmanaged_hint": "Yalnızca yeri tutulur, miktar tutulmaz"
   },
@@ -97,8 +98,9 @@
     "attributes": "Özellikler",
     "location": "Konum",
     "location_placeholder": "Konum kodu, örn. S1-07",
-    "qty": "Adet",
-    "qty_hint": "Şu an elinizde kaç tane var?",
+    "qty": "Miktar",
+    "unit": "Birim",
+    "qty_hint": "Şu an elinizde ne kadar var?",
     "level": "Doluluk",
     "level_hint": "Çekmecenin doluluğu",
     "save": "Kaydet",
