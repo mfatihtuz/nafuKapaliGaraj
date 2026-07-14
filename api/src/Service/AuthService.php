@@ -132,7 +132,7 @@ final class AuthService
 
     public function logout(string $token): void
     {
-        $this->db->run('DELETE FROM sessions WHERE token = :t', ['t' => $token]);
+        $this->db->run('DELETE FROM sessions WHERE token = :t', ['t' => self::hashToken($token)]);
     }
 
     /** @return array<string,mixed> */
@@ -225,14 +225,23 @@ final class AuthService
         $this->db->run('DELETE FROM login_attempts WHERE id = :id', ['id' => $key]);
     }
 
+    /** Ham token'ın DB'de saklanan biçimi — SHA-256. DB sızarsa oturumlar ele geçmez. */
+    public static function hashToken(string $token): string
+    {
+        return hash('sha256', $token);
+    }
+
     private function createSession(string $userId, string $tenantId): string
     {
-        $token = bin2hex(random_bytes(32));   // 64 hex
-        $expires = (new \DateTimeImmutable("+{$this->sessionTtlDays} days", new \DateTimeZone('UTC')))
-            ->format('Y-m-d H:i:s.v');
+        $token = bin2hex(random_bytes(32));   // 64 hex (istemciye ham, DB'ye hash'i gider)
+        $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $expires = $now->modify("+{$this->sessionTtlDays} days")->format('Y-m-d H:i:s.v');
+        // Bu kullanıcının süresi dolmuş oturumlarını temizle (sonsuz büyümeyi önle; SQLite-uyumlu).
+        $this->db->run('DELETE FROM sessions WHERE user_id = :u AND expires_at < :now',
+            ['u' => $userId, 'now' => $now->format('Y-m-d H:i:s.v')]);
         $this->db->run(
             'INSERT INTO sessions (token, user_id, tenant_id, expires_at) VALUES (:t, :u, :ten, :exp)',
-            ['t' => $token, 'u' => $userId, 'ten' => $tenantId, 'exp' => $expires]
+            ['t' => self::hashToken($token), 'u' => $userId, 'ten' => $tenantId, 'exp' => $expires]
         );
         return $token;
     }

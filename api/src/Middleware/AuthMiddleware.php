@@ -25,6 +25,8 @@ final class AuthMiddleware
         if ($token === null || $token === '' || strlen($token) !== 64) {
             throw HttpException::unauthorized();
         }
+        // DB'de token'ın HASH'i saklanır (düz metin değil) — sızıntıda oturumlar korunur.
+        $hashed = \Depo\Service\AuthService::hashToken($token);
 
         $row = $this->db->one(
             'SELECT s.user_id, s.tenant_id, s.expires_at, tu.role
@@ -32,7 +34,7 @@ final class AuthMiddleware
                JOIN tenant_users tu
                  ON tu.tenant_id = s.tenant_id AND tu.user_id = s.user_id
               WHERE s.token = :token',
-            ['token' => $token]
+            ['token' => $hashed]
         );
 
         if ($row === null) {

@@ -27,8 +27,9 @@ final class AccountService
         // Parola değişince bu kullanıcının DİĞER oturumları geçersiz kılınır
         // (çalınan/eski oturum yeni parolayı bilmeden açık kalmasın). Mevcut oturum korunur.
         if ($keepToken !== null && $keepToken !== '') {
+            // DB'de token'ın hash'i saklanır — korunacak oturumu da hash'le karşılaştır.
             $this->db->run('DELETE FROM sessions WHERE user_id = :u AND token <> :t',
-                ['u' => $userId, 't' => $keepToken]);
+                ['u' => $userId, 't' => \Depo\Service\AuthService::hashToken($keepToken)]);
         } else {
             $this->db->run('DELETE FROM sessions WHERE user_id = :u', ['u' => $userId]);
         }

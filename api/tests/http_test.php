@@ -52,10 +52,20 @@ function dispatch(Db $db, array $config, string $method, string $path, array $bo
     return json_decode($body, true) ?? [];
 }
 
+/**
+ * Test için geçerli bir oturum üretir: HAM token döner, DB'ye HASH'i yazılır
+ * (gerçek davranışın aynısı — token'lar artık düz metin saklanmaz).
+ */
 function tokenFor(Db $db, string $userId): string
 {
-    $row = $db->one('SELECT token FROM sessions WHERE user_id = :u ORDER BY created_at DESC LIMIT 1', ['u' => $userId]);
-    return (string) ($row['token'] ?? '');
+    $tenantId = (string) ($db->one('SELECT tenant_id FROM tenant_users WHERE user_id = :u', ['u' => $userId])['tenant_id'] ?? '');
+    $raw = bin2hex(random_bytes(32)); // 64 hex
+    $db->run(
+        'INSERT INTO sessions (token, user_id, tenant_id, expires_at) VALUES (:t,:u,:ten,:e)',
+        ['t' => \Depo\Service\AuthService::hashToken($raw), 'u' => $userId, 'ten' => $tenantId,
+         'e' => (new DateTimeImmutable('+1 day'))->format('Y-m-d H:i:s.v')]
+    );
+    return $raw;
 }
 
 // ===========================================================================
@@ -83,6 +93,9 @@ $login = dispatch($db, $config, 'POST', '/api/auth/login',
 eq($login['user']['email'] ?? null, 'fatih@depo.local', 'login → doğru kullanıcı');
 $token = tokenFor($db, $userId);
 check(strlen($token) === 64, 'login → 64 karakterlik opak token oluştu');
+// Güvenlik: token DB'de HASH olarak saklanır — ham token bulunmamalı.
+check($db->one('SELECT 1 FROM sessions WHERE token = :t', ['t' => $token]) === null, 'ham token DB\'de saklanmıyor (yalnızca hash)');
+check($db->one('SELECT 1 FROM sessions WHERE token = :t', ['t' => \Depo\Service\AuthService::hashToken($token)]) !== null, 'token\'ın hash\'i DB\'de var');
 
 // 4. Yanlış parola
 $bad = dispatch($db, $config, 'POST', '/api/auth/login',
@@ -128,9 +141,9 @@ $db->run('INSERT INTO users (id, email, password_hash, display_name) VALUES (:i,
 $tenantId = (string) ($db->one('SELECT tenant_id FROM tenant_users WHERE user_id = :u', ['u' => $userId])['tenant_id']);
 $db->run('INSERT INTO tenant_users (tenant_id, user_id, role) VALUES (:t,:u,:r)',
     ['t' => $tenantId, 'u' => $viewerUser, 'r' => 'viewer']);
-$vToken = bin2hex(random_bytes(32));
+$vToken = bin2hex(random_bytes(32)); // ham; DB'ye hash'i yazılır
 $db->run('INSERT INTO sessions (token, user_id, tenant_id, expires_at) VALUES (:t,:u,:ten,:e)',
-    ['t' => $vToken, 'u' => $viewerUser, 'ten' => $tenantId, 'e' => (new DateTimeImmutable('+1 day'))->format('Y-m-d H:i:s.v')]);
+    ['t' => \Depo\Service\AuthService::hashToken($vToken), 'u' => $viewerUser, 'ten' => $tenantId, 'e' => (new DateTimeImmutable('+1 day'))->format('Y-m-d H:i:s.v')]);
 $vpush = dispatch($db, $config, 'POST', '/api/sync/push', ['ops' => $ops], [$cookieName => $vToken]);
 eq($vpush['error'] ?? null, 'forbidden', 'viewer push → forbidden');
 

@@ -119,11 +119,19 @@ async function pushChunk(ops: OutboxOp[], queue: OutboxOp[]): Promise<{ applied:
     await db.outbox.where('op_id').anyOf(result.applied).delete()
   }
 
+  const now = Date.now()
   const permanentErrors: SyncErrorLog[] = []
   for (const rej of result.rejected) {
     const op = ops.find((o) => o.op_id === rej.op_id)
     if (!op) continue
-    const attempts = op.attempts + 1
+    // Üstel bekleme: her işlem/görünürlük değişiminde tetiklenen hızlı sync'ler
+    // 8 denemeyi dakikalar içinde tüketmesin. Bir denemeyi ancak backoff süresi
+    // geçtiyse "gerçek deneme" say; erken tekrarlar sayacı yakmaz.
+    const backoffMs = Math.min(60_000, 1000 * 2 ** op.attempts) // 1s,2s,…,60s
+    const elapsed = now - (op.last_attempt_at ?? 0)
+    const countsAsAttempt = elapsed >= backoffMs
+    const attempts = countsAsAttempt ? op.attempts + 1 : op.attempts
+
     const dependencyPending = rej.reason === 'not_found' && notFoundButUpsertPending(op, queue)
     const permanent = !dependencyPending && (PERMANENT.has(rej.reason) || attempts >= MAX_ATTEMPTS)
 
@@ -131,16 +139,17 @@ async function pushChunk(ops: OutboxOp[], queue: OutboxOp[]): Promise<{ applied:
       // Görünür şekilde logla, yerel optimistik etkiyi geri al, kuyruktan çıkar.
       permanentErrors.push({
         op_id: op.op_id, type: op.type, reason: rej.reason,
-        message: rej.message ?? rej.reason, at: Date.now(),
+        message: rej.message ?? rej.reason, at: now,
       })
       await revertLocal(op)
       await db.outbox.where('op_id').equals(op.op_id).delete()
     } else {
-      // Geçici hata: dene sayısını artır, kuyrukta tut (bir sonraki turda tekrar).
-      await db.outbox.where('op_id').equals(op.op_id).modify({
-        attempts,
-        last_error: rej.message ?? rej.reason,
-      })
+      // Geçici hata: kuyrukta tut. Yalnızca backoff geçtiyse sayaç + zaman güncellenir.
+      await db.outbox.where('op_id').equals(op.op_id).modify(
+        countsAsAttempt
+          ? { attempts, last_error: rej.message ?? rej.reason, last_attempt_at: now }
+          : { last_error: rej.message ?? rej.reason },
+      )
     }
   }
   await logErrors(permanentErrors)

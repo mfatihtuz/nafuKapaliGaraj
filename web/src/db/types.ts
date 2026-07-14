@@ -111,6 +111,7 @@ export interface OutboxOp {
   created_at: number
   attempts: number
   last_error?: string
+  last_attempt_at?: number // son gerçek deneme zamanı (üstel bekleme için)
 }
 
 export interface MetaRow {
