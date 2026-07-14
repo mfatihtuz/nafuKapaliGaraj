@@ -6,8 +6,9 @@ import {
 } from '../db/queries'
 import type { CountMode, Part } from '../db/types'
 import { savePart, softDeletePart } from '../db/actions'
-import { LEVEL_LABEL, REASON_LABEL, formatQty, timeAgo } from '../lib/format'
+import { LEVEL_LABEL, REASON_LABEL, timeAgo } from '../lib/format'
 import { UNITS } from '../lib/units'
+import { StockControl } from '../components/StockControl'
 import { useT } from '../i18n'
 import { useToast } from '../components/Toast'
 import { IconEdit, IconTrash, IconCheck } from '../components/icons'
@@ -175,17 +176,13 @@ export function PartDetail() {
           {places.length === 0 ? (
             <p className="text-sm text-brand-300">{t('search.no_location')}</p>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col">
               {places.map(({ stock, location }) => (
-                <div key={location.id} className="flex items-center justify-between">
+                <div key={location.id} className="flex items-center justify-between gap-3 border-b border-line py-3 last:border-0">
                   <Link to={`/l/${encodeURIComponent(location.code)}`} className="loc-code text-xl">
                     {location.code}
                   </Link>
-                  <span className="text-sm font-medium text-brand-600">
-                    {part.count_mode === 'level'
-                      ? stock.level ? LEVEL_LABEL[stock.level] : t('level.unknown')
-                      : formatQty(stock.qty, part.unit)}
-                  </span>
+                  <StockControl part={part} stock={stock} locationId={location.id} />
                 </div>
               ))}
             </div>
