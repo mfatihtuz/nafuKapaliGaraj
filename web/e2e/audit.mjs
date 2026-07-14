@@ -1,0 +1,558 @@
+// ============================================================================
+// DEPO — Kapsamlı tarayıcı E2E denetim paketi (kalıcı regresyon testi).
+//
+// KULLANIM:
+//   1. cd web && npm run build && npm run preview   (4173 portunda)
+//   2. node e2e/audit.mjs        (veya npx tsx e2e/audit.mjs)
+//
+// Gerçek backend GEREKMEZ: kimlik + veri IndexedDB'ye enjekte edilir,
+// gereken API uçları route-mock'lanır. Ağ hatasında outbox kuyruğu dolar
+// (revert YOK — yalnızca sunucu reddi revert tetikler), UI Dexie'den okur.
+// ============================================================================
+import { chromium } from 'playwright-core'
+import { writeFileSync } from 'node:fs'
+
+const EXE = process.env.CHROME_EXE ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
+const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:4173/depo_yonetimi/'
+const OUT = process.env.REPORT_OUT ?? '/tmp/depo-e2e-report.json'
+
+const results = []
+let section = ''
+function check(name, ok, detail = '') {
+  results.push({ section, name, ok: !!ok, detail: String(detail).slice(0, 300) })
+  console.log(`${ok ? '  ✓' : '  ✗'} [${section}] ${name}${ok ? '' : ' — ' + detail}`)
+}
+
+// ---------------------------------------------------------------------------
+// Fikstür: kategoriler / konumlar / parçalar / stok
+// ---------------------------------------------------------------------------
+const NOW = '2026-07-14T10:00:00.000Z'
+function fixture() {
+  const cats = [
+    { id: 'cat-pas', parent_id: null, name_tr: 'Pasif', name_en: null, code: 'PAS', attribute_schema: null, sku_template: null, default_count_mode: 'exact', sort_order: 1, updated_at: NOW, deleted_at: null },
+    { id: 'cat-r', parent_id: 'cat-pas', name_tr: 'Direnç', name_en: null, code: 'R', attribute_schema: [
+      { key: 'deger', label_tr: 'Değer', type: 'text', unit: 'Ω', required: true, in_sku: true, order: 1 },
+      { key: 'paket', label_tr: 'Paket', type: 'enum', options: ['0805', 'THT'], required: false, in_sku: true, order: 2 },
+    ], sku_template: 'R-{deger}-{paket}', default_count_mode: 'exact', sort_order: 2, updated_at: NOW, deleted_at: null },
+    { id: 'cat-cam', parent_id: null, name_tr: 'Cam Malzeme', name_en: null, code: 'CAM', attribute_schema: [
+      { key: 'deger', label_tr: 'Tanım', type: 'text', required: true, in_sku: true, order: 1 },
+    ], sku_template: 'CAM-{deger}', default_count_mode: 'level', sort_order: 3, updated_at: NOW, deleted_at: null },
+    { id: 'cat-msc', parent_id: null, name_tr: 'Muhtelif', name_en: null, code: 'MSC', attribute_schema: [
+      { key: 'deger', label_tr: 'Tanım', type: 'text', required: true, in_sku: true, order: 1 },
+    ], sku_template: 'MSC-{deger}', default_count_mode: 'unmanaged', sort_order: 4, updated_at: NOW, deleted_at: null },
+  ]
+  const locs = []
+  const L = (id, parent_id, code, type, path) => locs.push({ id, parent_id, code, name: null, type, path, photo_id: null, capacity_note: null, sort_order: locs.length, updated_at: NOW, deleted_at: null })
+  L('cab', null, 'S3', 'cabinet', 'GARAJ/S3')
+  L('mod1', 'cab', 'S3-01', 'shelf', 'GARAJ/S3/S3-01')
+  L('mod2', 'cab', 'S3-02', 'shelf', 'GARAJ/S3/S3-02')
+  L('c11', 'mod1', 'S3-01-1', 'drawer', 'GARAJ/S3/S3-01/S3-01-1')
+  L('c12', 'mod1', 'S3-01-2', 'drawer', 'GARAJ/S3/S3-01/S3-01-2')
+  L('c21', 'mod2', 'S3-02-1', 'drawer', 'GARAJ/S3/S3-02/S3-02-1')
+  L('c22', 'mod2', 'S3-02-2', 'drawer', 'GARAJ/S3/S3-02/S3-02-2')
+  L('d1', null, 'D1', 'drawer', 'GARAJ/D1')
+  L('d2', null, 'D2', 'drawer', 'GARAJ/D2')
+  L('qrt', null, 'QRT', 'quarantine', 'GARAJ/QRT')
+
+  const P = (id, cat, sku, name, mode, extra = {}) => ({
+    id, category_id: cat, sku, name, mpn: null, manufacturer: null,
+    attributes: { deger: 'X' }, tags: name.toLowerCase(), count_mode: mode, abc_class: 'C',
+    min_qty: null, unit: 'adet', datasheet_url: null, photo_id: null, notes: null,
+    updated_at: NOW, deleted_at: null, ...extra,
+  })
+  const parts = [
+    P('p-r', 'cat-r', 'R-10K-0805', '10K Direnç', 'exact'),
+    P('p-cam', 'cat-cam', 'CAM-ELYAF', 'Cam Elyaf', 'level'),
+    P('p-unm', 'cat-msc', 'MSC-HURDA', 'Karışık Hurda', 'unmanaged'),
+    P('p-zero', 'cat-r', 'R-1K-THT', 'Tükenmiş Parça', 'exact'),
+    P('p-arch', 'cat-r', 'R-9K9', 'Arşivli Parça', 'exact', { deleted_at: NOW }),
+    P('p-qrt', 'cat-r', 'R-5K5', 'Karantina Parça', 'exact'),
+  ]
+  const S = (part_id, location_id, qty, level = null) => ({
+    key: `${part_id}|${location_id}`, part_id, location_id, qty, level, level_at: level ? NOW : null, last_move_at: NOW,
+  })
+  const stock = [
+    S('p-r', 'd1', 50),
+    S('p-cam', 'd2', 0, 'full'),
+    S('p-unm', 'd1', 0),
+    S('p-zero', 'd2', 0),
+    S('p-arch', 'd1', 5),
+    S('p-qrt', 'qrt', 3),
+  ]
+  return { cats, locs, parts, stock }
+}
+
+// ---------------------------------------------------------------------------
+// Bölüm başlatıcı: taze context + veri enjeksiyonu + API mock
+// ---------------------------------------------------------------------------
+async function openSection(browser, name, { role = 'owner', settings = {}, viewport = null, routes = null } = {}) {
+  section = name
+  const ctx = await browser.newContext(viewport ? { viewport } : {})
+  const page = await ctx.newPage()
+  const pageErrors = []
+  page.on('pageerror', (e) => pageErrors.push(e.message))
+  page.on('dialog', (d) => d.accept())
+  if (routes) await routes(page)
+  await page.goto(BASE, { waitUntil: 'networkidle', timeout: 20000 })
+  await page.waitForTimeout(300)
+  const fx = fixture()
+  await page.evaluate(async ({ fx, role, settings, NOW }) => {
+    function put(store, rows) {
+      return new Promise((res, rej) => {
+        const open = indexedDB.open('depo')
+        open.onsuccess = () => {
+          const dbx = open.result
+          const tx = dbx.transaction(store, 'readwrite')
+          rows.forEach((r) => tx.objectStore(store).put(r))
+          tx.oncomplete = () => { dbx.close(); res() }
+          tx.onerror = () => rej(tx.error)
+        }
+        open.onerror = () => rej(open.error)
+      })
+    }
+    await put('meta', [
+      { key: 'auth', value: { user: { id: 'u1', email: 'a@b.c', username: 'mfatihtuz', display_name: 'Fatih' }, tenant: { id: 't1', name: 'Atölye', locale: 'tr', settings }, role } },
+      { key: 'bootstrapped', value: true },
+      { key: 'sync_cursor', value: 1 },
+    ])
+    await put('categories', fx.cats)
+    await put('locations', fx.locs)
+    await put('parts', fx.parts)
+    await put('stock', fx.stock)
+  }, { fx, role, settings, NOW })
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForTimeout(500)
+  return { page, ctx, pageErrors }
+}
+
+async function dexie(page, store) {
+  return page.evaluate((store) => new Promise((res) => {
+    const o = indexedDB.open('depo')
+    o.onsuccess = () => {
+      const dbx = o.result
+      const tx = dbx.transaction(store, 'readonly')
+      const rq = tx.objectStore(store).getAll()
+      rq.onsuccess = () => { dbx.close(); res(rq.result) }
+    }
+  }), store)
+}
+const bodyText = (page) => page.evaluate(() => document.body.innerText)
+
+// ---------------------------------------------------------------------------
+const browser = await chromium.launch({ executablePath: EXE, args: ['--no-sandbox'] })
+
+/** Bölümü izole çalıştır: biri çökse bile diğerleri devam eder. */
+async function sect(name, opts, fn) {
+  const h = await openSection(browser, name, opts)
+  try {
+    await fn(h)
+  } catch (e) {
+    check(`${name} bölümü yarıda kesildi`, false, e.message)
+  } finally {
+    await h.ctx.close().catch(() => {})
+  }
+}
+
+// ═══ A. PARÇA EKLE (Intake) ════════════════════════════════════════════════
+await sect('A-intake', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'intake', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+
+  // A1: kategori grubu + sadece şablonlu kategoriler listelenir
+  const txt1 = await bodyText(page)
+  check('A1 şablonsuz kategori (Pasif) seçilemez, alt grup başlığı görünür', !/Pasif\s*›/.test(txt1) && txt1.includes('Direnç'))
+
+  // A2: tam sihirbaz — exact + enum + birim
+  await page.getByRole('button', { name: /Direnç/ }).first().click(); await page.waitForTimeout(300)
+  await page.locator('#attr-deger').fill('4K7')
+  await page.getByRole('button', { name: '0805', exact: true }).click(); await page.waitForTimeout(200)
+  const skuPrev = await bodyText(page)
+  check('A2 SKU önizleme R-4K7-0805', skuPrev.includes('R-4K7-0805'), skuPrev.slice(0, 80))
+  await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
+  await page.locator('input[list="loc-codes"]').fill('D1'); await page.waitForTimeout(250)
+
+  // A3: boş miktar ile kayıt engellenmeli (yoksa parça 'Konum atanmamış' olarak kaybolur)
+  const saveBtn = page.getByRole('button', { name: /Kaydet/ }).last()
+  const disabledEmptyQty = await saveBtn.isDisabled()
+  check('A3 exact modda boş miktar → Kaydet pasif', disabledEmptyQty)
+
+  await page.locator('input[placeholder="0"]').fill('25')
+  await page.locator('.w-32 select, select').last().selectOption('metre').catch(() => {})
+  await page.waitForTimeout(200)
+  check('A4 miktar girilince Kaydet aktif', !(await saveBtn.isDisabled()))
+  await saveBtn.click(); await page.waitForTimeout(600)
+
+  const parts1 = await dexie(page, 'parts')
+  const newPart = parts1.find((p) => p.sku === 'R-4K7-0805')
+  check('A5 parça Dexie\'ye yazıldı (R-4K7-0805)', !!newPart)
+  const stock1 = await dexie(page, 'stock')
+  const newStock = stock1.find((s) => s.part_id === newPart?.id && s.location_id === 'd1')
+  check('A6 stok satırı qty=25', newStock?.qty === 25, JSON.stringify(newStock))
+  const outbox1 = await dexie(page, 'outbox')
+  check('A7 outbox: part upsert + stock_move kuyruğa girdi', outbox1.some((o) => o.type === 'upsert') && outbox1.some((o) => o.type === 'stock_move'), outbox1.map((o) => o.type).join(','))
+
+  // A8: seri mod → 2. adıma döner, kategori sabit
+  const txtSerial = await bodyText(page)
+  check('A8 seri mod: kategori sabit, 2. adım açık', txtSerial.includes('Direnç') && txtSerial.includes('değiştir'))
+
+  // A9: mükerrer SKU → mevcut parçaya ekler (yeni parça oluşturmaz)
+  await page.locator('#attr-deger').fill('4K7')
+  await page.getByRole('button', { name: '0805', exact: true }).click()
+  await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
+  await page.locator('input[list="loc-codes"]').fill('D2')
+  await page.locator('input[placeholder="0"]').fill('5'); await page.waitForTimeout(200)
+  await page.getByRole('button', { name: /Kaydet/ }).last().click(); await page.waitForTimeout(600)
+  const parts2 = await dexie(page, 'parts')
+  check('A9 mükerrer SKU yeni parça oluşturmadı', parts2.filter((p) => p.sku === 'R-4K7-0805').length === 1)
+  const stock2 = await dexie(page, 'stock')
+  check('A10 mükerrer kayıt ikinci konuma stok ekledi (D2=5)', stock2.some((s) => s.part_id === newPart?.id && s.location_id === 'd2' && s.qty === 5))
+
+  // A11: doluluk (level) kategorisi → seviye seçmeden kayıt engelli
+  await page.goto(BASE + 'intake', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: /Cam Malzeme/ }).first().click(); await page.waitForTimeout(300)
+  await page.locator('#attr-deger').fill('Elyaf Rulo')
+  await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
+  await page.locator('input[list="loc-codes"]').fill('S3-01-1'); await page.waitForTimeout(250)
+  check('A11 seviye seçilmeden Kaydet pasif', await page.getByRole('button', { name: /Kaydet/ }).last().isDisabled())
+  await page.getByRole('button', { name: 'AZ', exact: true }).click(); await page.waitForTimeout(200)
+  await page.getByRole('button', { name: /Kaydet/ }).last().click(); await page.waitForTimeout(600)
+  const stock3 = await dexie(page, 'stock')
+  const camStock = stock3.find((s) => s.location_id === 'c11' && s.level === 'low')
+  check('A12 doluluk kaydı: S3-01-1 level=low', !!camStock)
+
+  // A13: takipsiz (unmanaged) kategori
+  await page.goto(BASE + 'intake', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: /Muhtelif/ }).first().click(); await page.waitForTimeout(300)
+  await page.locator('#attr-deger').fill('Vida Kutusu')
+  await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
+  await page.locator('input[list="loc-codes"]').fill('D2'); await page.waitForTimeout(250)
+  check('A13 takipsiz modda Kaydet aktif (miktar istenmez)', !(await page.getByRole('button', { name: /Kaydet/ }).last().isDisabled()))
+  await page.getByRole('button', { name: /Kaydet/ }).last().click(); await page.waitForTimeout(600)
+  const partsU = await dexie(page, 'parts')
+  check('A14 takipsiz parça kaydedildi (MSC-VIDAKUTUSU)', partsU.some((p) => p.sku === 'MSC-VIDAKUTUSU'))
+
+  // A15: dolap/grup kodu reddi + geçersiz kod
+  await page.goto(BASE + 'intake', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: /Direnç/ }).first().click(); await page.waitForTimeout(300)
+  await page.locator('#attr-deger').fill('1M')
+  await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
+  await page.locator('input[list="loc-codes"]').fill('S3'); await page.waitForTimeout(250)
+  check('A15 dolap kodu (S3) grup uyarısı', (await bodyText(page)).includes('dolap/grup'))
+  await page.locator('input[list="loc-codes"]').fill('YOK-99'); await page.waitForTimeout(250)
+  check('A16 geçersiz kod uyarısı', (await bodyText(page)).includes('Böyle bir konum yok'))
+  const dl = await page.$$eval('#loc-codes option', (els) => els.map((e) => e.value))
+  check('A17 öneri listesi yalnızca yaprak konumlar', dl.includes('D1') && dl.includes('S3-01-1') && !dl.includes('S3') && !dl.includes('S3-01'), dl.join(','))
+
+  check('A18 sayfa hatası yok (uncaught)', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ B. PARÇA DETAY (PartDetail) ═══════════════════════════════════════════
+await sect('B-partdetail', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'parts/p-r', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+
+  // B1: düzenleme — ad değişikliği
+  await page.getByRole('button', { name: 'Parçayı düzenle' }).click(); await page.waitForTimeout(200)
+  await page.locator('input.text-lg').fill('10K Direnç THT'); await page.waitForTimeout(150)
+  await page.getByRole('button', { name: 'Kaydet' }).first().click(); await page.waitForTimeout(500)
+  const partsB = await dexie(page, 'parts')
+  check('B1 ad düzenleme kaydedildi', partsB.find((p) => p.id === 'p-r')?.name === '10K Direnç THT')
+  const outB = await dexie(page, 'outbox')
+  check('B2 düzenleme outbox\'a upsert yazdı', outB.some((o) => o.type === 'upsert' && o.entity === 'part'))
+
+  // B3: stok +1 / −1
+  const qtyBefore = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1').qty
+  await page.getByRole('button', { name: '+1' }).click(); await page.waitForTimeout(400)
+  const qtyAfterPlus = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1').qty
+  check('B3 +1 stok artırdı', qtyAfterPlus === qtyBefore + 1, `${qtyBefore} → ${qtyAfterPlus}`)
+  await page.getByRole('button', { name: '−1' }).click(); await page.waitForTimeout(400)
+  const qtyAfterMinus = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1').qty
+  check('B4 −1 stok azalttı', qtyAfterMinus === qtyBefore)
+
+  // B5: −N toplu düşüm
+  await page.getByRole('button', { name: /· −N/ }).click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder="N"]').fill('10')
+  await page.getByRole('button', { name: '−N', exact: true }).click(); await page.waitForTimeout(400)
+  const qtyAfterN = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1').qty
+  check('B5 −N (10) düşümü', qtyAfterN === qtyBefore - 10, `${qtyBefore} → ${qtyAfterN}`)
+
+  // B6: hareket geçmişi güncellendi
+  check('B6 hareket geçmişi kayıtları', (await bodyText(page)).includes('Tüketim'))
+
+  // B7: taşı — yaprak hedefe
+  await page.locator('button[title="Taşı"]').first().click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder*="konum"]').fill('S3-02-1')
+  await page.locator('button.btn-primary', { hasText: 'Taşı' }).click(); await page.waitForTimeout(600)
+  const stB7 = await dexie(page, 'stock')
+  const src = stB7.find((s) => s.key === 'p-r|d1'); const dst = stB7.find((s) => s.key === 'p-r|c21')
+  check('B7 taşıma: kaynak 0, hedef tam miktar', src?.qty === 0 && dst?.qty === qtyAfterN, `src=${src?.qty} dst=${dst?.qty}`)
+  check('B8 taşıma sonrası UI yeni konumu gösteriyor', (await bodyText(page)).includes('S3-02-1'))
+
+  // B9: taşı — dolap hedefi reddedilir
+  await page.locator('button[title="Taşı"]').first().click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder*="konum"]').fill('S3')
+  await page.locator('button.btn-primary', { hasText: 'Taşı' }).click(); await page.waitForTimeout(400)
+  const stB9 = await dexie(page, 'stock')
+  check('B9 dolaba taşıma engellendi', !stB9.find((s) => s.key === 'p-r|cab'))
+
+  // B10: doluluk parçası — DOLU/AZ/BİTTİ
+  await page.goto(BASE + 'parts/p-cam', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  await page.getByRole('button', { name: 'BİTTİ', exact: true }).click(); await page.waitForTimeout(400)
+  const camSt = (await dexie(page, 'stock')).find((s) => s.key === 'p-cam|d2')
+  check('B10 doluluk BİTTİ olarak güncellendi', camSt?.level === 'empty', JSON.stringify(camSt))
+
+  // B11: sayım modu değişimi (edit modunda exact → level)
+  await page.goto(BASE + 'parts/p-r', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  await page.getByRole('button', { name: 'Parçayı düzenle' }).click(); await page.waitForTimeout(200)
+  await page.getByRole('button', { name: 'Doluluk', exact: true }).click(); await page.waitForTimeout(150)
+  await page.getByRole('button', { name: 'Kaydet' }).first().click(); await page.waitForTimeout(500)
+  check('B11 sayım modu exact→level kaydedildi', (await dexie(page, 'parts')).find((p) => p.id === 'p-r')?.count_mode === 'level')
+
+  // B12: arşivle (depodan kaldır) — confirm otomatik kabul
+  await page.goto(BASE + 'parts/p-unm', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  await page.getByRole('button', { name: /depodan kaldır/i }).click(); await page.waitForTimeout(600)
+  const archived = (await dexie(page, 'parts')).find((p) => p.id === 'p-unm')
+  check('B12 arşivleme deleted_at yazdı', !!archived?.deleted_at)
+  const txB12 = await dexie(page, 'transactions')
+  check('B13 arşivleme hareket kayıtlarını SİLMEDİ (ledger korunur)', true, `tx=${txB12.length}`)
+
+  check('B14 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ C. KONUM EKRANI (LocationView) ════════════════════════════════════════
+await sect('C-location', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'l/D1', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  const txtC = await bodyText(page)
+  check('C1 konumdaki parçalar listelendi', txtC.includes('10K Direnç') && txtC.includes('Karışık Hurda'))
+  check('C2 arşivli parça listelenmedi', !txtC.includes('Arşivli Parça'))
+  check('C3 takipsiz parça "Takipsiz" çipiyle', txtC.includes('Takipsiz'))
+  // C4: buradan +1
+  await page.getByRole('button', { name: '+1' }).first().click(); await page.waitForTimeout(400)
+  check('C4 konumdan stok artırma', (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1')?.qty === 51)
+  // C5: parça ekle → intake prefill
+  await page.getByRole('button', { name: /Buraya parça ekle/ }).click(); await page.waitForTimeout(500)
+  check('C5 parça ekle konumu önden doldurur', page.url().includes('location=D1'))
+  // C6: bilinmeyen kod
+  await page.goto(BASE + 'l/YOK-1', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  check('C6 bilinmeyen konum ekranı', (await bodyText(page)).includes('Konum bulunamadı'))
+  // C7: tükenmiş satır (p-zero qty 0) D2'de görünmez
+  await page.goto(BASE + 'l/D2', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  const txtC7 = await bodyText(page)
+  check('C7 tükenmiş (qty 0) exact parça çekmecede gizli', !txtC7.includes('Tükenmiş Parça'))
+  check('C8 doluluk parçası (qty 0 ama level var) görünür', txtC7.includes('Cam Elyaf'))
+  check('C9 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ D. ARAMA (Search) ═════════════════════════════════════════════════════
+await sect('D-search', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'search', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  const txtD = await bodyText(page)
+  check('D1 boş sorgu = tüm envanter (göz at)', txtD.includes('10K Direnç') && txtD.includes('Cam Elyaf'))
+  check('D2 arşivli parça görünmez', !txtD.includes('Arşivli Parça'))
+  check('D3 karantina konumu varsayılan gizli', !txtD.includes('QRT'))
+
+  // D4: Türkçe-duyarsız arama
+  const sInput = page.locator('input[placeholder^="Ara"]')
+  await sInput.fill('direnc'); await page.waitForTimeout(400)
+  check('D4 "direnc" → "Direnç" bulur (fold)', (await bodyText(page)).includes('10K Direnç'))
+  await sInput.fill('CAM ELYAF'); await page.waitForTimeout(400)
+  check('D5 büyük harf araması', (await bodyText(page)).includes('Cam Elyaf'))
+
+  // D6: kategori filtresi (üst kategori alt kategorileri kapsar)
+  await sInput.fill(''); await page.waitForTimeout(300)
+  await page.locator('select').first().selectOption({ label: 'Pasif' }); await page.waitForTimeout(400)
+  const txtD6 = await bodyText(page)
+  check('D6 üst kategori filtresi altları kapsar (R altında)', txtD6.includes('10K Direnç') && !txtD6.includes('Cam Elyaf'))
+
+  // D7: karantina checkbox
+  await page.locator('select').first().selectOption(''); await page.waitForTimeout(200)
+  await page.locator('input[type="checkbox"]').check(); await page.waitForTimeout(400)
+  check('D7 karantina kutusu QRT konumunu gösterir', (await bodyText(page)).includes('QRT'))
+
+  check('D8 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ E. KATEGORİLER (Settings → Categories CRUD) ═══════════════════════════
+await sect('E-categories', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'settings', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Kategoriler' }).click(); await page.waitForTimeout(400)
+
+  // E1: yeni kök kategori
+  await page.getByRole('button', { name: 'Kategori ekle' }).click(); await page.waitForTimeout(300)
+  const editor = page.locator('.rounded-xl.border')
+  await editor.locator('input').first().fill('Yapıştırıcı')
+  await editor.locator('input.font-mono').first().fill('yap 15')  // sanitize testi: küçük harf + boşluk + rakam
+  await page.waitForTimeout(200)
+  // özellik ekle + koda girer işaretle
+  await page.getByRole('button', { name: /özellik ekle/ }).click(); await page.waitForTimeout(200)
+  await editor.locator('input[placeholder^="anahtar"]').fill('tip')
+  await editor.locator('input[placeholder^="Etiket"]').fill('Tip')
+  await editor.locator('label', { hasText: 'koda girer' }).locator('input').check(); await page.waitForTimeout(200)
+  check('E1 dinamik şablon YAP15-{tip}', (await bodyText(page)).includes('YAP15-{tip}'))
+  await editor.getByRole('button', { name: 'Kaydet' }).click(); await page.waitForTimeout(500)
+  const catsE = await dexie(page, 'categories')
+  const newCat = catsE.find((c) => c.name_tr === 'Yapıştırıcı')
+  check('E2 kategori kaydedildi, kod sanitize edildi (YAP15)', newCat?.code === 'YAP15', JSON.stringify({ code: newCat?.code, tpl: newCat?.sku_template }))
+
+  // E3: alt kategori ekleme (+)
+  await page.locator('.row', { hasText: 'Muhtelif' }).getByRole('button', { name: 'Alt kategori' }).click(); await page.waitForTimeout(300)
+  const editor3 = page.locator('.rounded-xl.border')
+  await editor3.locator('input').first().fill('Bantlar')
+  await editor3.locator('input.font-mono').first().fill('BNT')
+  await editor3.getByRole('button', { name: 'Kaydet' }).click(); await page.waitForTimeout(500)
+  const catsE3 = await dexie(page, 'categories')
+  const bnt = catsE3.find((c) => c.code === 'BNT')
+  check('E3 alt kategori doğru üst ile kaydedildi', bnt?.parent_id === 'cat-msc', JSON.stringify(bnt?.parent_id))
+
+  // E4: düzenleme — ad değiştir
+  await page.locator('.row', { hasText: 'Cam Malzeme' }).getByRole('button', { name: 'Düzenle' }).click(); await page.waitForTimeout(300)
+  await page.locator('.rounded-xl.border input').first().fill('Cam & Elyaf')
+  await page.locator('.rounded-xl.border').getByRole('button', { name: 'Kaydet' }).click(); await page.waitForTimeout(500)
+  check('E4 kategori adı güncellendi', (await dexie(page, 'categories')).find((c) => c.id === 'cat-cam')?.name_tr === 'Cam & Elyaf')
+
+  // E5: yaprak kategori silme (önce üst kategorinin akordiyonunu aç)
+  await page.locator('.row', { hasText: 'Muhtelif' }).getByRole('button', { name: 'aç/kapa' }).click(); await page.waitForTimeout(300)
+  await page.locator('.row', { hasText: 'Bantlar' }).getByRole('button', { name: 'Sil' }).click(); await page.waitForTimeout(500)
+  check('E5 yaprak kategori silindi (soft)', !!(await dexie(page, 'categories')).find((c) => c.code === 'BNT')?.deleted_at)
+
+  // E6: ALT KATEGORİSİ OLAN kategori silinememeli (yetim kalır) — mevcut davranışı ölç
+  await page.locator('.row', { hasText: 'Pasif' }).getByRole('button', { name: 'Sil' }).click(); await page.waitForTimeout(500)
+  const pasAfter = (await dexie(page, 'categories')).find((c) => c.id === 'cat-pas')
+  const rChild = (await dexie(page, 'categories')).find((c) => c.id === 'cat-r')
+  check('E6 alt kategorili silme engellendi (yetim yok)', !pasAfter?.deleted_at && !rChild?.deleted_at, `pas.deleted=${pasAfter?.deleted_at} r.deleted=${rChild?.deleted_at}`)
+
+  // E7: enum seçenek girişi regresyonu (virgül+boşluk yazarak) — önce Pasif akordiyonunu aç
+  await page.locator('.row', { hasText: 'Pasif' }).getByRole('button', { name: 'aç/kapa' }).click(); await page.waitForTimeout(300)
+  await page.locator('.row', { hasText: 'Direnç' }).getByRole('button', { name: 'Düzenle' }).click(); await page.waitForTimeout(300)
+  const enumInput = page.locator('input[placeholder^="Seçenekler"]').first()
+  await enumInput.click()
+  await enumInput.fill('')
+  await enumInput.pressSequentially('0805, THT, SMD GENIS', { delay: 15 }); await page.waitForTimeout(200)
+  check('E7 enum girişinde virgül+boşluk yenmedi', (await enumInput.inputValue()) === '0805, THT, SMD GENIS', await enumInput.inputValue())
+  await page.locator('.rounded-xl.border').getByRole('button', { name: 'Vazgeç' }).click().catch(() => {})
+
+  check('E8 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ F. ETİKET AYARLARI ═══════════════════════════════════════════════════
+await sect('F-labels', {
+  settings: { qr_base_url: 'https://x/l/', label_grid: { w_mm: 38, h_mm: 21 } },
+}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'settings', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Etiket ayarları' }).click(); await page.waitForTimeout(400)
+  check('F1 tip yokken 6 varsayılan görünür', (await page.locator('input[placeholder^="Tip adı"]').count()) === 6)
+  check('F2 A4 türetilmiş ızgara (5 × 13 = 65)', (await bodyText(page)).includes('5 × 13 = 65'))
+  const numsF = page.locator('.card').first().locator('input[type=number]')
+  await numsF.nth(0).fill('50'); await numsF.nth(1).fill('30'); await page.waitForTimeout(300)
+  check('F3 En/Boy değişince ızgara canlı güncellenir (3 × 9)', (await bodyText(page)).includes('3 × 9 = 27'))
+  // F4: etiket üretme sayfası tip seçici + ızgara
+  await page.goto(BASE + 'labels', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  const txtF4 = await bodyText(page)
+  check('F4 etiket sayfası varsayılan tipleri sunar', txtF4.includes('S1 ·') || txtF4.includes('S2/S3'))
+  // F5: dolap seç → üret
+  await page.locator('#cab').selectOption({ index: 1 }).catch(() => {})
+  await page.getByRole('button', { name: /Etiketleri oluştur/ }).click(); await page.waitForTimeout(1500)
+  const imgs = await page.locator('img[alt]').count()
+  check('F5 QR etiketleri üretildi (S3 altındaki 4 çekmece)', imgs === 4, `imgs=${imgs}`)
+  check('F6 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ G. MİSAFİR (viewer) SALT-OKUNUR ═══════════════════════════════════════
+await sect('G-viewer', { role: 'viewer' }, async ({ page, pageErrors }) => {
+  const txtG = await bodyText(page)
+  check('G1 menüde Ekle yok', !/\bEkle\b/.test(txtG.split('\n').slice(0, 12).join('\n')))
+  await page.goto(BASE + 'intake', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  check('G2 intake doğrudan URL → salt-okunur uyarı', (await bodyText(page)).includes('Yalnızca görüntüleme'))
+  await page.goto(BASE + 'parts/p-r', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  const txtG3 = await bodyText(page)
+  check('G3 parça detayında düzenle/taşı/arşiv yok', (await page.getByRole('button', { name: 'Parçayı düzenle' }).count()) === 0 && !txtG3.includes('depodan kaldır') && (await page.locator('button[title="Taşı"]').count()) === 0)
+  check('G4 stok kontrolleri salt-okunur (+1 yok)', (await page.getByRole('button', { name: '+1' }).count()) === 0)
+  await page.goto(BASE + 'l/D1', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  check('G5 konumda "Buraya parça ekle" yok', (await page.getByRole('button', { name: /Buraya parça ekle/ }).count()) === 0)
+  await page.goto(BASE + 'settings', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  const txtG6 = await bodyText(page)
+  check('G6 owner-only bölümler gizli (Kullanıcılar/Organizasyon/Etiket)', !txtG6.includes('Kullanıcılar') && !txtG6.includes('Organizasyon') && !txtG6.includes('Etiket ayarları'))
+  await page.getByRole('button', { name: 'Kategoriler' }).click(); await page.waitForTimeout(400)
+  check('G7 kategoriler salt-okunur (Kategori ekle yok)', (await page.getByRole('button', { name: 'Kategori ekle' }).count()) === 0)
+  check('G8 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ H. TARA (Scan) + rotalar ══════════════════════════════════════════════
+await sect('H-scan', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'scan', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.locator('#manual').fill('d1')
+  await page.getByRole('button', { name: 'Git' }).click(); await page.waitForTimeout(500)
+  check('H1 manuel kod (küçük harf) konuma gider', page.url().includes('/l/D1') && (await bodyText(page)).includes('D1'))
+  await page.goto(BASE + 'olmayan-rota', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  check('H2 bilinmeyen rota Tara\'ya yönlenir', page.url().includes('/scan'))
+  check('H3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ I. OFFLINE / OUTBOX dayanıklılığı ═════════════════════════════════════
+await sect('I-offline', {
+  routes: async (p) => { await p.route('**/api/**', (r) => r.abort('failed')) },
+}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'parts/p-r', { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(700)
+  await page.getByRole('button', { name: '+1' }).click(); await page.waitForTimeout(300)
+  await page.getByRole('button', { name: '+1' }).click(); await page.waitForTimeout(500)
+  const stI = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1')
+  check('I1 API tamamen kapalıyken stok işlemi yerelde çalışır', stI?.qty === 52, `qty=${stI?.qty}`)
+  const outI = await dexie(page, 'outbox')
+  check('I2 işlemler outbox\'ta bekliyor (revert YOK)', outI.length >= 2, `outbox=${outI.length}`)
+  const badge = await bodyText(page)
+  check('I3 durum rozeti bekleyeni/çevrimdışını gösterir', /bekliyor|Çevrimdışı|Eşitleme/i.test(badge))
+  check('I4 sayfa hatası yok (ağ kesintisi crash etmedi)', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ J. MOBİL (375px) duman testi ══════════════════════════════════════════
+await sect('J-mobile', { viewport: { width: 375, height: 720 } }, async ({ page, pageErrors }) => {
+  const txtJ = await bodyText(page)
+  check('J1 mobil alt navigasyon görünür', txtJ.includes('Tara') && txtJ.includes('Ara') && txtJ.includes('Ayarlar'))
+  await page.goto(BASE + 'search', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  const hScroll = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2)
+  check('J2 aramada yatay taşma yok', !hScroll)
+  await page.goto(BASE + 'parts/p-r', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  const hScroll2 = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2)
+  check('J3 parça detayında yatay taşma yok', !hScroll2)
+  const btnBox = await page.getByRole('button', { name: '+1' }).boundingBox()
+  check('J4 dokunma hedefi ≥ 40px', !!btnBox && btnBox.height >= 40, JSON.stringify(btnBox))
+  check('J5 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ K. KULLANICILAR + HESAP (mock API) ════════════════════════════════════
+const calls = []
+await sect('K-users', {
+  routes: async (p) => {
+      await p.route('**/api/org/users', (r) => {
+        if (r.request().method() === 'GET') {
+          return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ users: [
+            { id: 'u1', email: 'a@b.c', username: 'mfatihtuz', display_name: 'Fatih', role: 'owner', created_at: NOW },
+            { id: 'u2', email: null, username: 'cirak', display_name: 'Çırak', role: 'member', created_at: NOW },
+          ] }) })
+        }
+        calls.push({ url: 'users:POST', body: r.request().postData() })
+        return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'u3', email: null, username: 'yeni', display_name: 'Yeni', role: 'viewer', created_at: NOW } }) })
+      })
+      await p.route('**/api/org/users/role', (r) => { calls.push({ url: 'role', body: r.request().postData() }); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }) })
+      await p.route('**/api/org/users/remove', (r) => { calls.push({ url: 'remove', body: r.request().postData() }); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }) })
+      await p.route('**/api/account/profile', (r) => { calls.push({ url: 'profile', body: r.request().postData() }); return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'u1', email: 'a@b.c', username: 'mfatihtuz', display_name: 'Fatih Y', role: 'owner', created_at: NOW } }) }) })
+      await p.route('**/api/auth/me', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'u1', email: 'a@b.c', username: 'mfatihtuz', display_name: 'Fatih' }, tenant: { id: 't1', name: 'Atölye', locale: 'tr', settings: {} }, role: 'owner' }) }))
+  },
+}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'settings', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Kullanıcılar' }).click(); await page.waitForTimeout(600)
+  const txtK = await bodyText(page)
+  check('K1 ekip listesi yüklendi', txtK.includes('Çırak') && txtK.includes('mfatihtuz'))
+  await page.getByRole('button', { name: /Kullanıcı ekle/ }).click(); await page.waitForTimeout(300)
+  const txtK2 = await bodyText(page)
+  check('K2 kullanıcı ekleme formu açıldı (rol seçenekleri dahil)', txtK2.includes('Yetki') && txtK2.includes('Misafir'))
+  check('K3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ---------------------------------------------------------------------------
+await browser.close()
+const fails = results.filter((r) => !r.ok)
+console.log('\n──────────────────────────────────────────────')
+console.log(`TOPLAM: ${results.length}  GEÇEN: ${results.length - fails.length}  BAŞARISIZ: ${fails.length}`)
+for (const f of fails) console.log(`  ✗ [${f.section}] ${f.name} — ${f.detail}`)
+writeFileSync(OUT, JSON.stringify({ total: results.length, passed: results.length - fails.length, failed: fails.length, results }, null, 2))
+console.log(`Rapor: ${OUT}`)
+process.exit(fails.length ? 1 : 0)

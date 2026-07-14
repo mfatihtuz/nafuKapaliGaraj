@@ -156,7 +156,7 @@ export function PartDetail() {
               <IconCheck size={16} /> {t('common.save')}
             </button>
           ) : (
-            <button onClick={startEdit} className="btn-icon h-9 w-9 text-white/90 hover:bg-white/10">
+            <button onClick={startEdit} aria-label={t('part.edit')} title={t('part.edit')} className="btn-icon h-9 w-9 text-white/90 hover:bg-white/10">
               <IconEdit size={18} />
             </button>
           )

@@ -231,6 +231,7 @@
       "template_auto": "otomatik",
       "template_hint": "Aşağıdaki özelliklerden 'koda girer' işaretlediklerinden otomatik oluşur. İşareti kaldırınca çıkar, tekrar işaretlersen en sona eklenir.",
       "delete_confirm": "Bu kategori gizlensin mi?",
+      "has_children": "Bu kategorinin alt kategorileri var — önce onları silin veya başka üst kategoriye taşıyın.",
       "empty": "Henüz kategori yok"
     },
     "account_role": "Yetki",

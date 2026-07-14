@@ -151,7 +151,7 @@ export function LabelsSection() {
                 <div className="flex items-center gap-2">
                   <input className="input h-9 flex-1" placeholder={t('settings.labels_cfg.type_name')} value={tp.name}
                     onChange={(e) => patchType(tp.id, { name: e.target.value })} />
-                  <button onClick={() => removeType(tp.id)} className="btn-icon h-9 w-9 text-brand-300 hover:bg-red-50 hover:text-red-600">
+                  <button onClick={() => removeType(tp.id)} title={t('common.delete')} aria-label={t('common.delete')} className="btn-icon h-9 w-9 text-brand-300 hover:bg-red-50 hover:text-red-600">
                     <IconTrash size={16} />
                   </button>
                 </div>

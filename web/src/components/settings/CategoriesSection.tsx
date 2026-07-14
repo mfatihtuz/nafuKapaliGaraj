@@ -116,6 +116,11 @@ export function CategoriesSection({ canWrite }: { canWrite: boolean }) {
     toast.show(t('common.save'), 'success')
   }
   async function remove(id: string) {
+    // Alt kategorisi olan kategori silinemez — çocuklar yetim kalır ve ağaçta görünmez olur.
+    if (categories.some((c) => c.parent_id === id)) {
+      toast.show(t('settings.categories.has_children'), 'error')
+      return
+    }
     if (!confirm(t('settings.categories.delete_confirm'))) return
     await softDeleteCategory(id)
   }
@@ -144,10 +149,10 @@ export function CategoriesSection({ canWrite }: { canWrite: boolean }) {
               <button onClick={() => setDraft(emptyCategory(c.id, maxSort + 10))} className="btn-icon h-8 w-8 text-brand-300 hover:bg-canvas" title={t('settings.categories.add_sub')}>
                 <IconPlus size={16} />
               </button>
-              <button onClick={() => setDraft({ ...c, attribute_schema: c.attribute_schema ?? [] })} className="btn-icon h-8 w-8 text-brand-400 hover:bg-canvas">
+              <button onClick={() => setDraft({ ...c, attribute_schema: c.attribute_schema ?? [] })} title={t('common.edit')} aria-label={t('common.edit')} className="btn-icon h-8 w-8 text-brand-400 hover:bg-canvas">
                 <IconEdit size={15} />
               </button>
-              <button onClick={() => void remove(c.id)} className="btn-icon h-8 w-8 text-brand-300 hover:bg-red-50 hover:text-red-600">
+              <button onClick={() => void remove(c.id)} title={t('common.delete')} aria-label={t('common.delete')} className="btn-icon h-8 w-8 text-brand-300 hover:bg-red-50 hover:text-red-600">
                 <IconTrash size={15} />
               </button>
             </>

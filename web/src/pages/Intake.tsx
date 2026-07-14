@@ -112,7 +112,10 @@ export function Intake() {
     return v !== undefined && v !== null && String(v).trim() !== ''
   })
   const levelOk = mode !== 'level' || level !== null
-  const canSave = !!category && !!locationMatch && !!sku && attrsComplete && levelOk && !busy
+  // Miktarlı modda miktar zorunlu ve > 0 — yoksa parça 0 stokla oluşur,
+  // "tükenmiş" sayılıp listelerden gizlenir ve kullanıcı parçayı "kayboldu" sanır.
+  const qtyOk = mode !== 'exact' || (qty.trim() !== '' && Number(qty) > 0)
+  const canSave = !!category && !!locationMatch && !!sku && attrsComplete && levelOk && qtyOk && !busy
 
   function pickCategory(id: string) {
     setCatId(id)
