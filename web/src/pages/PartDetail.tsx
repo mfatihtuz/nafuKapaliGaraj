@@ -27,10 +27,18 @@ function LocationRow({
   const [moving, setMoving] = useState(false)
   const [dest, setDest] = useState('')
 
+  // Yalnızca yaprak konumlar (alt konumu olmayan çekmece/göz) hedef olabilir.
+  const childParentIds = new Set(locations.filter((l) => l.parent_id).map((l) => l.parent_id as string))
+  const storable = locations.filter((l) => !childParentIds.has(l.id))
+
   async function doMove() {
     const target = locations.find((l) => l.code.toUpperCase() === dest.trim().toUpperCase())
     if (!target) {
       toast.show(t('scan.not_found', { code: dest }), 'error')
+      return
+    }
+    if (childParentIds.has(target.id)) {
+      toast.show(t('intake.location_is_group', { code: target.code }), 'error')
       return
     }
     if (target.id === location.id) { setMoving(false); return }
@@ -70,7 +78,7 @@ function LocationRow({
             autoCapitalize="characters"
           />
           <datalist id="move-loc-codes">
-            {locations.map((l) => <option key={l.id} value={l.code}>{l.name ?? l.path}</option>)}
+            {storable.map((l) => <option key={l.id} value={l.code}>{l.name ?? l.path}</option>)}
           </datalist>
           <button onClick={() => void doMove()} className="btn-primary h-9 px-3 text-sm">
             {t('part.move')}

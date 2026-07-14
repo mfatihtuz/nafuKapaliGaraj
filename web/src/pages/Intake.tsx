@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { AppHeader, Container } from '../components/Layout'
 import { useCategories, useLocations } from '../db/queries'
 import { AttributeForm } from '../components/AttributeForm'
-import type { Category, Part, PartAttributes, StockLevel } from '../db/types'
+import type { Category, Location, Part, PartAttributes, StockLevel } from '../db/types'
 import { buildSku, autoName } from '../lib/sku'
 import { UNITS } from '../lib/units'
 import { normalize } from '../lib/normalize'
@@ -86,8 +86,21 @@ export function Intake() {
 
   const category = categories.find((c) => c.id === catId)
   const sku = category ? buildSku(category.sku_template, attrs) : ''
-  const locationMatch = locations.find((l) => l.code.toUpperCase() === locCode.trim().toUpperCase())
   const mode = category?.default_count_mode ?? 'exact'
+
+  // Parça yalnızca YAPRAK konuma eklenir (alt konumu olmayan çekmece/göz).
+  // Dolap/modül gibi gruplar depolama hedefi değildir — öneri listesinden çıkarılır.
+  const childParentIds = useMemo(
+    () => new Set(locations.filter((l) => l.parent_id).map((l) => l.parent_id as string)),
+    [locations],
+  )
+  const isLeaf = (l: Location) => !childParentIds.has(l.id)
+  const storableLocations = useMemo(() => locations.filter(isLeaf), [locations, childParentIds])
+
+  const typedCode = locCode.trim().toUpperCase()
+  const exactLoc = locations.find((l) => l.code.toUpperCase() === typedCode)
+  const locationMatch = exactLoc && isLeaf(exactLoc) ? exactLoc : undefined
+  const containerMatch = exactLoc && !isLeaf(exactLoc) ? exactLoc : undefined
 
   // Yalnızca "zorunlu" işaretli alanlar mecburi. "Koda girer" bir alanı zorunlu KILMAZ;
   // boş bırakılırsa SKU'dan o parça düşer (buildSku ayraçları temizler).
@@ -241,9 +254,10 @@ export function Intake() {
               <input list="loc-codes" value={locCode} onChange={(e) => setLocCode(e.target.value)}
                 placeholder={t('intake.location_placeholder')} className="input font-mono uppercase" autoCapitalize="characters" />
               <datalist id="loc-codes">
-                {locations.map((l) => <option key={l.id} value={l.code}>{l.name ?? l.path}</option>)}
+                {storableLocations.map((l) => <option key={l.id} value={l.code}>{l.name ?? l.path}</option>)}
               </datalist>
-              {locCode.trim() && !locationMatch && <p className="field-hint text-red-600">{t('scan.not_found', { code: locCode })}</p>}
+              {typedCode && !exactLoc && <p className="field-hint text-red-600">{t('scan.not_found', { code: locCode })}</p>}
+              {containerMatch && <p className="field-hint text-amber-600">{t('intake.location_is_group', { code: containerMatch.code })}</p>}
               {locationMatch && <p className="field-hint text-green-700">{locationMatch.path}</p>}
 
               <div className="mt-4">

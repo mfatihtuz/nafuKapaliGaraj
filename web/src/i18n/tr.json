@@ -120,7 +120,8 @@
     "code_preview": "Parça kodu",
     "add_to_existing": "Bu parça zaten var; bu konuma eklendi",
     "name_auto": "Ad (boş bırakırsanız otomatik oluşturulur)",
-    "pick_category": "Önce bir kategori seçin"
+    "pick_category": "Önce bir kategori seçin",
+    "location_is_group": "{code} bir dolap/grup — parça içindeki bir çekmeceye (ör. {code}-1) eklenir."
   },
   "labels": {
     "title": "Etiket Yazdır",
