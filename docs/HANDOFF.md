@@ -15,10 +15,14 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
   grup konumda alt-konum listesi.
 - Raporlar: `docs/AUDIT_REPORT.md` (bulgular) + `docs/ACTION_REPORT.md` (yapılan/yapılacak).
 
-**Kaldı (sıradaki tur — kullanıcı talebi, sırayla):**
-1. Malzeme ekle/sil/taşı akışlarının UI/UX yeniden tasarımı (tüm sayfalar).
-2. Etiket tipi ↔ dolap ilişkisi (dolap seçince tip otomatik; tip güncellenince yansısın).
-3. Aramada çekmece/konum filtresi + grup/alt-grup görsel belirginliği.
+**Yapıldı (devamı — aynı gün):** UI/UX turu tamamlandı:
+- LocationPicker: dolap başlıklı GRUPLU konum seçici (Parça Ekle + Taşı);
+  yazarken erken "konum yok" hatası basılmaz, grup koduna amber açıklama.
+- Parça detayında etiketli "Başka çekmeceye taşı" akışı (belirsiz ikon gitti);
+  geçersiz/grup hedefte düğme pasif.
+- Aramaya KONUM (dolap) filtresi + kartlarda kategori chip'i.
+- Etiket tipi ↔ dolap bağı: ayarlarda tipe dolap ata; Etiket Yazdır'da dolap
+  seçilince tip OTOMATİK gelir. E2E 95/95.
 
 **Bilinen sorunlar / backlog:** `docs/ACTION_REPORT.md` §B (konum CRUD ekranı yok,
 sayım ekranı yok, checksum/self-heal yok, token hash, backoff…).
