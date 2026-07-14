@@ -11,7 +11,7 @@ import { normalize } from '../lib/normalize'
 import { uuidv7 } from '../lib/uuid'
 import { db } from '../db/dexie'
 import { savePart, moveStock, setLevel } from '../db/actions'
-import { LEVEL_LABEL } from '../lib/format'
+import { levelLabel, unitLabel } from '../lib/format'
 import { useT } from '../i18n'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
@@ -259,7 +259,7 @@ export function Intake() {
                       <div className="w-32">
                         <label className="field-label">{t('intake.unit')}</label>
                         <select className="select" value={unit} onChange={(e) => setUnit(e.target.value)}>
-                          {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                          {UNITS.map((u) => <option key={u} value={u}>{unitLabel(t, u)}</option>)}
                         </select>
                       </div>
                     </div>
@@ -273,7 +273,7 @@ export function Intake() {
                       {LEVELS.map((lvl) => (
                         <button key={lvl} onClick={() => setLvl(lvl)}
                           className={`btn flex-1 ${level === lvl ? 'bg-brand-700 text-white' : 'bg-brand-50 text-brand-500'}`}>
-                          {LEVEL_LABEL[lvl]}
+                          {levelLabel(t, lvl)}
                         </button>
                       ))}
                     </div>

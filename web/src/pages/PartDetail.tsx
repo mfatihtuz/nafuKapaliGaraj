@@ -7,7 +7,7 @@ import {
 import type { CountMode, Part, Stock, Location } from '../db/types'
 import { savePart, softDeletePart, movePartStock } from '../db/actions'
 import { db } from '../db/dexie'
-import { LEVEL_LABEL, REASON_LABEL, timeAgo } from '../lib/format'
+import { levelLabel, reasonLabel, unitLabel, timeAgo } from '../lib/format'
 import { buildTags } from '../lib/sku'
 import { UNITS } from '../lib/units'
 import { StockControl } from '../components/StockControl'
@@ -258,8 +258,8 @@ export function PartDetail() {
                   value={current.unit}
                   onChange={(e) => setDraft({ ...current, unit: e.target.value })}
                 >
-                  {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-                  {!UNITS.includes(current.unit as never) && <option value={current.unit}>{current.unit}</option>}
+                  {UNITS.map((u) => <option key={u} value={u}>{unitLabel(t, u)}</option>)}
+                  {!UNITS.includes(current.unit as never) && <option value={current.unit}>{unitLabel(t, current.unit)}</option>}
                 </select>
               </div>
               <div>
@@ -361,8 +361,8 @@ export function PartDetail() {
               {history.slice(0, 30).map((tx) => (
                 <li key={tx.id} className="flex items-center justify-between border-b border-mist pb-1">
                   <span className="text-brand-500">
-                    {REASON_LABEL[tx.reason]}
-                    {tx.level_to ? ` → ${LEVEL_LABEL[tx.level_to]}` : ''}
+                    {reasonLabel(t, tx.reason)}
+                    {tx.level_to ? ` → ${levelLabel(t, tx.level_to)}` : ''}
                   </span>
                   <span className="flex items-center gap-2">
                     {tx.delta != null && (
@@ -370,7 +370,7 @@ export function PartDetail() {
                         {tx.delta > 0 ? '+' : ''}{tx.delta}
                       </span>
                     )}
-                    <span className="text-xs text-brand-300">{timeAgo(tx.created_at)}</span>
+                    <span className="text-xs text-brand-300">{timeAgo(t, tx.created_at)}</span>
                   </span>
                 </li>
               ))}

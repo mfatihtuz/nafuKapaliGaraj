@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Part, Stock, StockLevel } from '../db/types'
 import { moveStock, setLevel, countStock } from '../db/actions'
-import { formatQty, LEVEL_LABEL } from '../lib/format'
+import { formatQty, levelLabel, unitLabel } from '../lib/format'
 import { useT } from '../i18n'
 import { useAuth } from '../auth/AuthContext'
 import { IconPlus, IconMinus } from './icons'
@@ -26,13 +26,13 @@ function StockReadonly({ part, stock }: { part: Part; stock?: Stock }) {
     const lvl = stock?.level ?? null
     if (!lvl) return <span className="chip bg-brand-50 text-brand-400">{t('level.unknown')}</span>
     const cls = lvl === 'full' ? 'chip-full' : lvl === 'low' ? 'chip-low' : 'chip-empty'
-    return <span className={cls}>{LEVEL_LABEL[lvl]}</span>
+    return <span className={cls}>{levelLabel(t, lvl)}</span>
   }
   const qty = stock?.qty ?? 0
   const low = part.min_qty != null && qty < part.min_qty
   return (
     <span className={`chip tabular-nums ${low ? 'bg-red-50 text-red-600' : 'bg-brand-50 text-brand-600'}`}>
-      {formatQty(qty, part.unit)}
+      {formatQty(qty, unitLabel(t, part.unit))}
     </span>
   )
 }
@@ -68,7 +68,7 @@ export function StockControl({ part, stock, locationId }: Props) {
                 active ? `${tone} text-white` : 'bg-white text-brand-500 border border-mist'
               }`}
             >
-              {LEVEL_LABEL[lvl]}
+              {levelLabel(t, lvl)}
             </button>
           )
         })}
@@ -113,7 +113,7 @@ export function StockControl({ part, stock, locationId }: Props) {
           <div className={`text-2xl font-extrabold tabular-nums ${low ? 'text-red-600' : 'text-brand-800'}`}>
             {qty}
           </div>
-          <div className="text-[11px] text-brand-400">{part.unit}</div>
+          <div className="text-[11px] text-brand-400">{unitLabel(t, part.unit)}</div>
         </button>
         <button
           onClick={() => void moveStock({ partId: part.id, locationId, delta: 1, reason: 'adjust' })}

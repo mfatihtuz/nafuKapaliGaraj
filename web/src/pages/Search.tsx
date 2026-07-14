@@ -3,19 +3,20 @@ import { Link } from 'react-router-dom'
 import { AppHeader, Container } from '../components/Layout'
 import { useSearch, useCategories, useLocations, type SearchHit } from '../db/queries'
 import type { Category, Location, Part, Stock } from '../db/types'
-import { LEVEL_LABEL, formatQty } from '../lib/format'
+import { levelLabel, unitLabel, formatQty } from '../lib/format'
 import { useT } from '../i18n'
 import { IconSearch } from '../components/icons'
 
 function StockPill({ part, stock }: { part: Part; stock: Stock }) {
+  const { t } = useT()
   if (part.count_mode === 'level') {
     const lvl = stock.level
     if (!lvl) return null
     const cls = lvl === 'full' ? 'chip-full' : lvl === 'low' ? 'chip-low' : 'chip-empty'
-    return <span className={cls}>{LEVEL_LABEL[lvl]}</span>
+    return <span className={cls}>{levelLabel(t, lvl)}</span>
   }
   if (part.count_mode === 'exact') {
-    return <span className="chip bg-brand-50 text-brand-600 tabular-nums">{formatQty(stock.qty, part.unit)}</span>
+    return <span className="chip bg-brand-50 text-brand-600 tabular-nums">{formatQty(stock.qty, unitLabel(t, part.unit))}</span>
   }
   return null
 }

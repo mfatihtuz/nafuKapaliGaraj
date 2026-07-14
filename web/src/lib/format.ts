@@ -1,28 +1,28 @@
 // Görüntüleme yardımcıları. UTC → yerel dönüşüm burada yapılır (CLAUDE.md §4).
+// Metinler sözlükten gelir (CLAUDE.md §5 — kodda sabit UI metni yok); bu yüzden
+// etiket üreten yardımcılar `t` fonksiyonunu parametre alır.
 
 import type { StockLevel, TxReason } from '../db/types'
+import type { TFn } from '../i18n'
 
 export function formatQty(qty: number, unit = 'adet'): string {
   const n = Number.isInteger(qty) ? qty.toString() : qty.toFixed(3).replace(/\.?0+$/, '')
   return `${n} ${unit}`
 }
 
-export const LEVEL_LABEL: Record<StockLevel, string> = {
-  full: 'DOLU',
-  low: 'AZ',
-  empty: 'BİTTİ',
+/** Doluluk etiketi (DOLU/AZ/BİTTİ) — sözlükten. */
+export function levelLabel(t: TFn, level: StockLevel): string {
+  return t(`level.${level}`)
 }
 
-export const REASON_LABEL: Record<TxReason, string> = {
-  purchase: 'Satın alma',
-  consume: 'Tüketim',
-  transfer: 'Transfer',
-  adjust: 'Düzeltme',
-  audit: 'Sayım',
-  scrap: 'Atık',
-  loan_out: 'Ödünç verildi',
-  loan_return: 'Ödünç iade',
-  initial: 'Açılış',
+/** Hareket sebebi etiketi (Satın alma/Tüketim…) — sözlükten. */
+export function reasonLabel(t: TFn, reason: TxReason): string {
+  return t(`reason.${reason}`)
+}
+
+/** Birim etiketi — değer kanoniktir ('metre'); yalnızca GÖRÜNÜM sözlükten çözülür. */
+export function unitLabel(t: TFn, unit: string): string {
+  return t(`unit.${unit}`)
 }
 
 /** UTC ISO/DB string → yerel "13 Tem 2026 12:14" biçimi. */
@@ -37,17 +37,17 @@ export function formatDateTime(iso: string | null): string {
   })
 }
 
-/** "3 dk önce" tarzı göreli zaman. */
-export function timeAgo(iso: string | null): string {
+/** "3 dk önce" tarzı göreli zaman — metinler sözlükten. */
+export function timeAgo(t: TFn, iso: string | null): string {
   if (!iso) return '—'
   const norm = iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z'
   const then = new Date(norm).getTime()
   if (Number.isNaN(then)) return '—'
   const diff = Math.round((Date.now() - then) / 1000)
-  if (diff < 60) return 'az önce'
-  if (diff < 3600) return `${Math.floor(diff / 60)} dk önce`
-  if (diff < 86400) return `${Math.floor(diff / 3600)} sa önce`
-  if (diff < 2592000) return `${Math.floor(diff / 86400)} gün önce`
+  if (diff < 60) return t('time.just_now')
+  if (diff < 3600) return t('time.min_ago', { n: Math.floor(diff / 60) })
+  if (diff < 86400) return t('time.hour_ago', { n: Math.floor(diff / 3600) })
+  if (diff < 2592000) return t('time.day_ago', { n: Math.floor(diff / 86400) })
   return formatDateTime(iso)
 }
 

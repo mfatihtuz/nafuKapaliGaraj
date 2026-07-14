@@ -64,6 +64,20 @@
     "sublocations": "{n} alt konum"
   },
   "level": { "full": "DOLU", "low": "AZ", "empty": "BİTTİ", "unknown": "—" },
+  "reason": {
+    "purchase": "Satın alma", "consume": "Tüketim", "transfer": "Transfer",
+    "adjust": "Düzeltme", "audit": "Sayım", "scrap": "Atık",
+    "loan_out": "Ödünç verildi", "loan_return": "Ödünç iade", "initial": "Açılış"
+  },
+  "time": {
+    "just_now": "az önce", "min_ago": "{n} dk önce",
+    "hour_ago": "{n} sa önce", "day_ago": "{n} gün önce"
+  },
+  "unit": {
+    "adet": "adet", "metre": "metre", "cm": "cm", "mm": "mm", "m²": "m²",
+    "gram": "gram", "kg": "kg", "litre": "litre", "ml": "ml",
+    "paket": "paket", "rulo": "rulo", "çift": "çift", "takım": "takım", "top": "top"
+  },
   "picker": { "ungrouped": "Diğer konumlar" },
   "stock": { "count": "Say", "count_hint": "Gerçek sayılan adedi girin — fark düzeltme olarak işlenir" },
   "loc_type": {
