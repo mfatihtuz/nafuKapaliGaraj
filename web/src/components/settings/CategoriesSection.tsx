@@ -18,6 +18,25 @@ function emptyCategory(parentId: string | null, sort: number): Category {
   }
 }
 
+/**
+ * Enum seçenek girişi — HAM metni yerel state'te tutar; `options` yalnızca kayıt için
+ * türetilir. Böylece yazarken sondaki virgül/boşluk yenmez ("Arduino UNO, ESP32" çalışır).
+ */
+function EnumOptionsInput({ value, onChange }: { value: string[]; onChange: (opts: string[]) => void }) {
+  const [raw, setRaw] = useState(value.join(', '))
+  return (
+    <input
+      className="input col-span-2 h-9 text-sm"
+      placeholder="Seçenekler: Arduino UNO, ESP32, STM32"
+      value={raw}
+      onChange={(e) => {
+        setRaw(e.target.value)
+        onChange(e.target.value.split(',').map((s) => s.trim()).filter(Boolean))
+      }}
+    />
+  )
+}
+
 /** Kompakt özellik (attribute) editörü. */
 function AttributeEditor({ schema, onChange }: { schema: AttributeDef[]; onChange: (s: AttributeDef[]) => void }) {
   const { t } = useT()
@@ -41,8 +60,7 @@ function AttributeEditor({ schema, onChange }: { schema: AttributeDef[]; onChang
             </select>
             <input className="input h-9 text-sm" placeholder="birim (Ω)" value={a.unit ?? ''} onChange={(e) => update(i, { unit: e.target.value })} />
             {a.type === 'enum' && (
-              <input className="input col-span-2 h-9 text-sm" placeholder="Seçenekler: 0805, 1206, THT" value={(a.options ?? []).join(', ')}
-                onChange={(e) => update(i, { options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} />
+              <EnumOptionsInput value={a.options ?? []} onChange={(opts) => update(i, { options: opts })} />
             )}
           </div>
           <div className="mt-2 flex items-center gap-4 text-xs text-brand-500">
