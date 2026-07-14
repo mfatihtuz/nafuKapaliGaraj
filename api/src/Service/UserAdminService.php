@@ -114,6 +114,25 @@ final class UserAdminService
         );
     }
 
+    /** Owner, bir üyenin parolasını sıfırlar (geçici parola atar); o üyenin oturumları kapatılır. */
+    public function resetPassword(string $tenantId, string $userId, string $newPassword): void
+    {
+        if (mb_strlen($newPassword) < 8) {
+            throw HttpException::unprocessable('Geçici parola en az 8 karakter olmalı');
+        }
+        $membership = $this->db->one(
+            'SELECT role FROM tenant_users WHERE tenant_id = :t AND user_id = :u',
+            ['t' => $tenantId, 'u' => $userId]
+        );
+        if ($membership === null) {
+            throw HttpException::notFound('Kullanıcı bu organizasyonda değil');
+        }
+        $this->db->run('UPDATE users SET password_hash = :h WHERE id = :id',
+            ['h' => password_hash($newPassword, PASSWORD_ARGON2ID), 'id' => $userId]);
+        // Eski oturumlar geçersiz (kullanıcı yeni parolayla tekrar girmeli).
+        $this->db->run('DELETE FROM sessions WHERE user_id = :u', ['u' => $userId]);
+    }
+
     public function removeUser(string $tenantId, string $actingUserId, string $userId): void
     {
         if ($userId === $actingUserId) {

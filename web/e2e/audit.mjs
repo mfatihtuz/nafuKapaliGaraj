@@ -661,6 +661,7 @@ await sect('K-users', {
       })
       await p.route('**/api/org/users/role', (r) => { calls.push({ url: 'role', body: r.request().postData() }); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }) })
       await p.route('**/api/org/users/remove', (r) => { calls.push({ url: 'remove', body: r.request().postData() }); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }) })
+      await p.route('**/api/org/users/password', (r) => { calls.push({ url: 'reset', body: r.request().postData() }); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }) })
       await p.route('**/api/account/profile', (r) => { calls.push({ url: 'profile', body: r.request().postData() }); return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'u1', email: 'a@b.c', username: 'mfatihtuz', display_name: 'Fatih Y', role: 'owner', created_at: NOW } }) }) })
       await p.route('**/api/auth/me', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'u1', email: 'a@b.c', username: 'mfatihtuz', display_name: 'Fatih' }, tenant: { id: 't1', name: 'Atölye', locale: 'tr', settings: {} }, role: 'owner' }) }))
   },
@@ -672,7 +673,19 @@ await sect('K-users', {
   await page.getByRole('button', { name: /Kullanıcı ekle/ }).click(); await page.waitForTimeout(300)
   const txtK2 = await bodyText(page)
   check('K2 kullanıcı ekleme formu açıldı (rol seçenekleri dahil)', txtK2.includes('Yetki') && txtK2.includes('Misafir'))
-  check('K3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+  // K4: ad + parola var ama kullanıcı adı/e-posta yok → Oluştur pasif + uyarı
+  await page.getByRole('textbox').nth(0).fill('Deneme'); await page.waitForTimeout(100)
+  const pwField = page.locator('.rounded-xl.border input[type="text"]').last()
+  await pwField.fill('gecici123'); await page.waitForTimeout(150)
+  const createDisabled = await page.getByRole('button', { name: 'Oluştur' }).isDisabled()
+  check('K4 kullanıcı adı/e-posta yoksa Oluştur pasif + uyarı', createDisabled && (await bodyText(page)).includes('en az biri gerekli'))
+  await page.getByRole('button', { name: 'Vazgeç' }).first().click(); await page.waitForTimeout(200)
+  // K5: üye parolasını sıfırla (anahtar → geçici parola → sıfırla)
+  await page.locator('.row', { hasText: 'Çırak' }).getByRole('button', { name: 'Parola sıfırla' }).click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder*="Geçici"]').fill('yenisifre8'); await page.waitForTimeout(100)
+  await page.getByRole('button', { name: 'Parola sıfırla', exact: true }).last().click(); await page.waitForTimeout(400)
+  check('K5 parola sıfırlama isteği gönderildi', calls.some((c) => c.url === 'reset' && (c.body || '').includes('yenisifre8')), JSON.stringify(calls.filter((c) => c.url === 'reset')))
+  check('K6 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
 // ═══ L. KONUM YÖNETİMİ (Settings → Konumlar) ═══════════════════════════════

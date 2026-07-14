@@ -60,6 +60,13 @@ final class OrgController
         $res->json(['ok' => true]);
     }
 
+    public function resetPassword(Request $req, Response $res, array $params, ?Context $ctx): void
+    {
+        $ctx = $this->requireOwner($ctx);
+        $this->svc->resetPassword($ctx->tenantId, (string) $req->input('user_id', ''), (string) $req->input('password', ''));
+        $res->json(['ok' => true]);
+    }
+
     public function rename(Request $req, Response $res, array $params, ?Context $ctx): void
     {
         $ctx = $this->requireOwner($ctx);

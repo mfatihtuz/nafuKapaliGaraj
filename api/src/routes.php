@@ -37,5 +37,6 @@ $router->get('/api/org/users', [OrgController::class, 'listUsers']);
 $router->post('/api/org/users', [OrgController::class, 'createUser']);
 $router->post('/api/org/users/role', [OrgController::class, 'setRole']);
 $router->post('/api/org/users/remove', [OrgController::class, 'removeUser']);
+$router->post('/api/org/users/password', [OrgController::class, 'resetPassword']);
 $router->post('/api/org/rename', [OrgController::class, 'rename']);
 $router->post('/api/org/settings', [OrgController::class, 'updateSettings']);

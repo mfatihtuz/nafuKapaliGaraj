@@ -193,7 +193,12 @@
       "created": "Kullanıcı eklendi",
       "remove": "Çıkar",
       "remove_confirm": "Bu kullanıcı organizasyondan çıkarılsın mı?",
-      "you": "siz"
+      "you": "siz",
+      "need_login": "Kullanıcı adı veya e-postadan en az biri gerekli (giriş için).",
+      "reset_pw": "Parola sıfırla",
+      "temp_pw": "Geçici parola (en az 8 karakter)",
+      "pw_min": "Parola en az 8 karakter olmalı",
+      "pw_reset_done": "Parola sıfırlandı — kullanıcı yeni parolayla girmeli"
     },
     "roles": {
       "owner": "Yönetici",

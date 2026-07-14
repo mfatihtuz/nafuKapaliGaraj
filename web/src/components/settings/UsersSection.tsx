@@ -3,7 +3,7 @@ import { api, ApiError, type OrgUser } from '../../sync/api'
 import { useAuth } from '../../auth/AuthContext'
 import { useT } from '../../i18n'
 import { useToast } from '../Toast'
-import { IconPlus, IconTrash, IconUsers } from '../icons'
+import { IconPlus, IconTrash, IconUsers, IconKey } from '../icons'
 
 const ROLES = ['owner', 'member', 'viewer'] as const
 
@@ -22,6 +22,19 @@ export function UsersSection() {
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ display_name: '', username: '', email: '', password: '', role: 'member' })
   const [busy, setBusy] = useState(false)
+  const [resetId, setResetId] = useState<string | null>(null)
+  const [resetPw, setResetPw] = useState('')
+
+  async function doReset(id: string) {
+    if (resetPw.trim().length < 8) { toast.show(t('settings.users.pw_min'), 'error'); return }
+    try {
+      await api.resetUserPassword(id, resetPw.trim())
+      toast.show(t('settings.users.pw_reset_done'), 'success')
+      setResetId(null); setResetPw('')
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.message : 'Hata', 'error')
+    }
+  }
 
   async function load() {
     try {
@@ -119,9 +132,16 @@ export function UsersSection() {
               <p className="field-hint">{t(`settings.roles.${form.role}_hint`)}</p>
             </div>
           </div>
+          {!form.username.trim() && !form.email.trim() && (
+            <p className="mt-2 text-xs text-amber-600">{t('settings.users.need_login')}</p>
+          )}
           <div className="mt-4 flex justify-end gap-2">
             <button onClick={() => setAdding(false)} className="btn-ghost">{t('common.cancel')}</button>
-            <button onClick={() => void create()} disabled={busy || !form.display_name || !form.password} className="btn-primary">
+            <button
+              onClick={() => void create()}
+              disabled={busy || !form.display_name.trim() || form.password.length < 8 || (!form.username.trim() && !form.email.trim())}
+              className="btn-primary"
+            >
               {t('settings.users.create')}
             </button>
           </div>
@@ -135,7 +155,8 @@ export function UsersSection() {
           {users.map((u) => {
             const isMe = u.id === auth?.user.id
             return (
-              <div key={u.id} className="row">
+              <div key={u.id}>
+              <div className="row">
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-50 text-sm font-bold text-brand-500">
                   {u.display_name.slice(0, 1).toUpperCase()}
                 </span>
@@ -158,11 +179,27 @@ export function UsersSection() {
                   </select>
                 )}
                 {!isMe && (
+                  <button onClick={() => { setResetId(resetId === u.id ? null : u.id); setResetPw('') }} title={t('settings.users.reset_pw')} aria-label={t('settings.users.reset_pw')} className="btn-icon text-brand-300 hover:bg-brand-50 hover:text-brand-700">
+                    <IconKey size={16} />
+                  </button>
+                )}
+                {!isMe && (
                   <button onClick={() => void remove(u.id)} title={t('settings.users.remove')} aria-label={t('settings.users.remove')} className="btn-icon text-brand-300 hover:bg-red-50 hover:text-red-600">
                     <IconTrash size={17} />
                   </button>
                 )}
               </div>
+              {resetId === u.id && (
+                <div className="mb-2 ml-12 flex items-center gap-2 rounded-lg bg-brand-50 p-2">
+                  <input
+                    autoFocus type="text" value={resetPw} onChange={(e) => setResetPw(e.target.value)}
+                    placeholder={t('settings.users.temp_pw')} className="input h-9 flex-1"
+                  />
+                  <button onClick={() => void doReset(u.id)} className="btn-primary h-9 px-3 text-sm">{t('settings.users.reset_pw')}</button>
+                  <button onClick={() => setResetId(null)} className="btn-ghost h-9 px-2 text-sm">{t('common.cancel')}</button>
+                </div>
+              )}
+            </div>
             )
           })}
           {users.length === 0 && (

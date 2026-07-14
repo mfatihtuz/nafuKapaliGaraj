@@ -110,6 +110,8 @@ export const api = {
   setUserRole: (user_id: string, role: string) =>
     request<{ ok: boolean }>('POST', '/org/users/role', { user_id, role }),
   removeUser: (user_id: string) => request<{ ok: boolean }>('POST', '/org/users/remove', { user_id }),
+  resetUserPassword: (user_id: string, password: string) =>
+    request<{ ok: boolean }>('POST', '/org/users/password', { user_id, password }),
   renameOrg: (name: string) => request<{ tenant: { id: string; name: string } }>('POST', '/org/rename', { name }),
   updateOrgSettings: (settings: Record<string, unknown>) =>
     request<{ settings: Record<string, unknown> }>('POST', '/org/settings', { settings }),
