@@ -51,6 +51,14 @@ export async function softDeleteCategory(id: string): Promise<void> {
   engine.schedule()
 }
 
+export async function softDeleteLocation(id: string): Promise<void> {
+  const ts = nowIso()
+  const local = await db.locations.get(id)
+  if (local) await db.locations.put({ ...local, deleted_at: ts, updated_at: ts })
+  await enqueue({ type: 'delete', entity: 'location', data: { id, updated_at: ts } })
+  engine.schedule()
+}
+
 // --- Stok hareketleri (defter — delta toplanabilir) -------------------------
 
 export interface MoveInput {
@@ -144,7 +152,27 @@ export async function movePartStock(
 }
 
 /**
- * Sayım (audit): fiziksel sayım mutlak değeri.
+ * Sayım (offline-first): fiziksel sayım sonucunu MUTLAK değer olarak uygular.
+ * Yerel qty ile fark (delta = counted - current) hesaplanıp optimistik bir 'audit'
+ * hareketi olarak defterlenir — böylece çevrimdışı anında yansır (moveStock/setLevel
+ * ile aynı model). Tek cihazda yerel = sunucu olduğundan sonuç doğrudur.
+ * (Not: çok cihazlı drift düzeltmesi gereken senaryo için sunucu-yetkili `auditStock`
+ *  ayrıca vardır; UI tek-cihaz garaj kullanımı için bu optimistik yolu kullanır.)
+ */
+export async function countStock(
+  partId: string,
+  locationId: string,
+  countedQty: number,
+  currentQty: number,
+  note?: string | null,
+): Promise<void> {
+  const delta = countedQty - currentQty
+  if (delta === 0) return
+  await moveStock({ partId, locationId, delta, reason: 'audit', note: note ?? null })
+}
+
+/**
+ * Sayım (sunucu-yetkili): fiziksel sayım mutlak değeri.
  * Delta'yı SUNUCU kendi güncel qty'sine göre hesaplar (drift'e karşı doğru — SYNC_PROTOCOL §5.3).
  * Bu yüzden yerel optimistik ledger kaydı OLUŞTURULMAZ; sonuç sync turunda yansır.
  */

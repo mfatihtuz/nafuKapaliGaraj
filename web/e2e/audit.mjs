@@ -270,23 +270,33 @@ await sect('B-partdetail', {}, async ({ page, pageErrors }) => {
   const qtyAfterMinus = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1').qty
   check('B4 −1 stok azalttı', qtyAfterMinus === qtyBefore)
 
-  // B5: −N toplu düşüm
-  await page.getByRole('button', { name: /· −N/ }).click(); await page.waitForTimeout(200)
+  // B5: −N toplu düşüm (Say/−N ayrı butonlar; −N açılınca input + kırmızı −N onayı)
+  await page.getByRole('button', { name: '−N', exact: true }).click(); await page.waitForTimeout(200)
   await page.locator('input[placeholder="N"]').fill('10')
-  await page.getByRole('button', { name: '−N', exact: true }).click(); await page.waitForTimeout(400)
+  await page.locator('button.btn-danger', { hasText: '−N' }).click(); await page.waitForTimeout(400)
   const qtyAfterN = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1').qty
   check('B5 −N (10) düşümü', qtyAfterN === qtyBefore - 10, `${qtyBefore} → ${qtyAfterN}`)
 
   // B6: hareket geçmişi güncellendi
   check('B6 hareket geçmişi kayıtları', (await bodyText(page)).includes('Tüketim'))
 
+  // B6.5: SAY (mutlak sayım) — sayıya dokun, gerçek adedi gir → audit deltası
+  await page.getByRole('button', { name: 'Say', exact: true }).first().click(); await page.waitForTimeout(200)
+  await page.locator('input[type="number"]').last().fill('12')
+  await page.locator('button.btn-primary', { hasText: 'Kaydet' }).first().click(); await page.waitForTimeout(500)
+  const rSayQty = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1')?.qty
+  check('B6.5 sayım mutlak değere ayarladı (→12)', rSayQty === 12, `qty=${rSayQty}`)
+  const sayTx = (await dexie(page, 'transactions')).filter((x) => x.reason === 'audit')
+  check('B6.6 sayım audit hareketi olarak defterlendi', sayTx.length >= 1, `audit tx=${sayTx.length}`)
+
   // B7: taşı — yaprak hedefe (etiketli 'Başka çekmeceye taşı' düğmesi)
   await page.getByRole('button', { name: 'Başka çekmeceye taşı' }).first().click(); await page.waitForTimeout(200)
   await page.locator('input[placeholder*="onum kodu"]').fill('S3-02-1'); await page.waitForTimeout(250)
+  const qtyBeforeMove = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1')?.qty
   await page.locator('button.btn-primary', { hasText: 'Taşı' }).click(); await page.waitForTimeout(600)
   const stB7 = await dexie(page, 'stock')
   const src = stB7.find((s) => s.key === 'p-r|d1'); const dst = stB7.find((s) => s.key === 'p-r|c21')
-  check('B7 taşıma: kaynak 0, hedef tam miktar', src?.qty === 0 && dst?.qty === qtyAfterN, `src=${src?.qty} dst=${dst?.qty}`)
+  check('B7 taşıma: kaynak 0, hedef tam miktar', src?.qty === 0 && dst?.qty === qtyBeforeMove, `src=${src?.qty} dst=${dst?.qty} (beklenen ${qtyBeforeMove})`)
   check('B8 taşıma sonrası UI yeni konumu gösteriyor', (await bodyText(page)).includes('S3-02-1'))
 
   // B9: taşı — dolap hedefi: Taşı düğmesi pasif kalır + amber uyarı
@@ -314,9 +324,9 @@ await sect('B-partdetail', {}, async ({ page, pageErrors }) => {
   await page.goto(BASE + 'parts/p-cam', { waitUntil: 'networkidle' }); await page.waitForTimeout(300)
   // (p-cam level modda; clamp testi için p-qrt exact qty=3'ü kullan)
   await page.goto(BASE + 'parts/p-qrt', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
-  await page.getByRole('button', { name: /· −N/ }).click(); await page.waitForTimeout(200)
+  await page.getByRole('button', { name: '−N', exact: true }).click(); await page.waitForTimeout(200)
   await page.locator('input[placeholder="N"]').fill('999')
-  await page.getByRole('button', { name: '−N', exact: true }).click(); await page.waitForTimeout(400)
+  await page.locator('button.btn-danger', { hasText: '−N' }).click(); await page.waitForTimeout(400)
   const qrtQty = (await dexie(page, 'stock')).find((s) => s.key === 'p-qrt|qrt')?.qty
   check('B11.2 −N eldekiyle sınırlandı (999 → 0, negatif değil)', qrtQty === 0, `qty=${qrtQty}`)
 
@@ -611,6 +621,66 @@ await sect('K-users', {
   const txtK2 = await bodyText(page)
   check('K2 kullanıcı ekleme formu açıldı (rol seçenekleri dahil)', txtK2.includes('Yetki') && txtK2.includes('Misafir'))
   check('K3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ L. KONUM YÖNETİMİ (Settings → Konumlar) ═══════════════════════════════
+await sect('L-locations', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'settings', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Konumlar', exact: true }).click(); await page.waitForTimeout(400)
+  check('L1 konum ağacı yüklendi (S3, D1)', (await bodyText(page)).includes('S3') && (await bodyText(page)).includes('D1'))
+
+  // L2: tekil konum ekle (yeni dolap)
+  await page.getByRole('button', { name: 'Konum ekle' }).click(); await page.waitForTimeout(300)
+  const ed = page.locator('.rounded-xl.border')
+  await ed.locator('input.font-mono').fill('S9')
+  await ed.locator('input').nth(1).fill('Yeni Dolap')
+  await ed.getByRole('button', { name: 'Kaydet' }).click(); await page.waitForTimeout(500)
+  const locsL2 = await dexie(page, 'locations')
+  const s9 = locsL2.find((l) => l.code === 'S9')
+  check('L2 dolap eklendi (kod+ad+path)', s9?.name === 'Yeni Dolap' && s9?.path === 'S9', JSON.stringify({ code: s9?.code, path: s9?.path }))
+
+  // L3: kod tekilliği — aynı kodu tekrar eklemeye çalış
+  await page.getByRole('button', { name: 'Konum ekle' }).click(); await page.waitForTimeout(300)
+  await page.locator('.rounded-xl.border input.font-mono').fill('S9')
+  await page.locator('.rounded-xl.border').getByRole('button', { name: 'Kaydet' }).click(); await page.waitForTimeout(400)
+  const s9count = (await dexie(page, 'locations')).filter((l) => l.code === 'S9' && !l.deleted_at).length
+  check('L3 kod tekilliği engellendi', s9count === 1 && (await bodyText(page)).includes('tekil olmalı'))
+  await page.locator('.rounded-xl.border').getByRole('button', { name: 'Vazgeç' }).click().catch(() => {}); await page.waitForTimeout(200)
+
+  // L4: toplu üret — düz, S8 dolabı + 4 çekmece
+  await page.getByRole('button', { name: 'Toplu üret' }).click(); await page.waitForTimeout(300)
+  const gen = page.locator('.border-accent\\/40')
+  await gen.locator('input.font-mono').fill('S8')
+  await gen.locator('input[type="number"]').last().fill('4')
+  await page.waitForTimeout(200)
+  check('L4a önizleme toplam gösterir', (await bodyText(page)).includes('Toplam 5 konum'))
+  await gen.getByRole('button', { name: 'Oluştur' }).click(); await page.waitForTimeout(700)
+  const locsL4 = await dexie(page, 'locations')
+  const s8 = locsL4.find((l) => l.code === 'S8')
+  const s8drawers = locsL4.filter((l) => l.parent_id === s8?.id && l.type === 'drawer')
+  check('L4b toplu üret: dolap + 4 çekmece (S8-01..S8-04)', !!s8 && s8drawers.length === 4 && locsL4.some((l) => l.code === 'S8-01' && l.path === 'S8/S8-01'), `drawers=${s8drawers.length}`)
+
+  // L5: silme guard — çocuğu olan dolap (S8) silinemez
+  await page.getByRole('button', { name: 'Konumlar', exact: true }).click().catch(() => {}); await page.waitForTimeout(200)
+  const rowS8 = page.locator('.row', { hasText: 'S8' }).first()
+  await rowS8.getByRole('button', { name: 'Sil' }).click(); await page.waitForTimeout(400)
+  check('L5 alt konumu olan silinemez', !(await dexie(page, 'locations')).find((l) => l.code === 'S8')?.deleted_at && (await bodyText(page)).includes('alt konum'))
+
+  // L6: silme guard — stok olan çekmece (D1'de p-r var) silinemez
+  const rowD1 = page.locator('.row', { hasText: 'D1' }).first()
+  await rowD1.getByRole('button', { name: 'Sil' }).click(); await page.waitForTimeout(400)
+  check('L6 stok olan konum silinemez', !(await dexie(page, 'locations')).find((l) => l.code === 'D1')?.deleted_at && (await bodyText(page)).includes('parça var'))
+
+  // L7: boş yaprak çekmece silinebilir (S9-... yok; S8-04 boş)
+  await page.locator('.row', { hasText: 'S8' }).first().getByRole('button', { name: 'Aç / kapa' }).click().catch(() => {}); await page.waitForTimeout(300)
+  const rowS804 = page.locator('.row', { hasText: 'S8-04' }).first()
+  await rowS804.getByRole('button', { name: 'Sil' }).click(); await page.waitForTimeout(500)
+  check('L7 boş çekmece silindi (soft)', !!(await dexie(page, 'locations')).find((l) => l.code === 'S8-04')?.deleted_at)
+
+  // L8: yeni konum outbox'a upsert olarak yazıldı
+  const outL = await dexie(page, 'outbox')
+  check('L8 konum işlemleri outbox\'ta (upsert location)', outL.some((o) => o.type === 'upsert' && o.entity === 'location'))
+  check('L9 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
 // ---------------------------------------------------------------------------
