@@ -531,6 +531,26 @@ await sect('F2-label-link', {
   check('F2.3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ M. DOLULUK TAŞIMA (BİTTİ hayaleti birikmemeli) ═══════════════════════════
+await sect('M-level-move', {}, async ({ page, pageErrors }) => {
+  // p-cam doluluk parçası, d2'de DOLU. İki kez taşı → sadece son konum görünmeli.
+  await page.goto(BASE + 'parts/p-cam', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  await page.getByRole('button', { name: 'Başka çekmeceye taşı' }).first().click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder*="onum kodu"]').fill('D1'); await page.waitForTimeout(250)
+  await page.locator('button.btn-primary', { hasText: 'Taşı' }).click(); await page.waitForTimeout(600)
+  await page.getByRole('button', { name: 'Başka çekmeceye taşı' }).first().click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder*="onum kodu"]').fill('S3-01-1'); await page.waitForTimeout(250)
+  await page.locator('button.btn-primary', { hasText: 'Taşı' }).click(); await page.waitForTimeout(600)
+
+  const txtM = await bodyText(page)
+  const locBlock = txtM.split('Hareket geçmişi')[0]  // yalnızca konum bölümü
+  check('M1 taşıma sonrası yalnızca son konum (S3-01-1) görünür', locBlock.includes('S3-01-1'))
+  check('M2 eski konumlar (D1/D2) BİTTİ hayaleti olarak görünmez', !/\\bD1\\b/.test(locBlock) && !/\\bD2\\b/.test(locBlock), locBlock.replace(/\\n/g,' ').slice(0,160))
+  const txM = await dexie(page, 'transactions')
+  check('M3 taşıma hareketleri defterde duruyor', txM.filter((x) => x.part_id === 'p-cam').length >= 2)
+  check('M4 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ═══ G. MİSAFİR (viewer) SALT-OKUNUR ═══════════════════════════════════════
 await sect('G-viewer', { role: 'viewer' }, async ({ page, pageErrors }) => {
   const txtG = await bodyText(page)

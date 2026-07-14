@@ -10,14 +10,17 @@ export interface StockWithLocation { stock: Stock; location: Location }
 export interface SearchHit { part: Part; places: StockWithLocation[]; categoryName: string | null }
 
 /**
- * "Tükenmiş" satır — konum/parça listelerinde gizlenir (defterde kalır):
+ * "Tükenmiş" satır — konum/parça/arama listelerinden gizlenir (defterde kalır):
  *  • Miktarlı: adet 0'a inmiş (taşınmış/tüketilmiş) ve doluluk bilgisi yok.
+ *  • Doluluk: BİTTİ (empty) — o gözde artık yok demektir; taşımada kaynak BİTTİ
+ *    olur, gizlenmezse her taşımada geride bir "BİTTİ hayaleti" birikir.
  *  • Takipsiz: varlık işareti negatife inmiş (başka konuma taşınmış).
- *    (0 = eski kayıtlar; görünür kalır. Yeni eklemeler +1 yazar.)
- * Doluluk satırları (BİTTİ dâhil) her zaman görünür.
+ * DOLU/AZ satırları görünür kalır. (BİTTİ kalemler ileride "alışveriş listesi"
+ * ekranında defterden ayrıca listelenecek — FAZ 2.)
  */
 function isExhausted(part: Part, stock: Stock): boolean {
   if (part.count_mode === 'exact') return Number(stock.qty) <= 0 && stock.level == null
+  if (part.count_mode === 'level') return stock.level === 'empty'
   if (part.count_mode === 'unmanaged') return Number(stock.qty) < 0
   return false
 }

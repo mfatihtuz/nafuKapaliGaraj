@@ -12,13 +12,27 @@ export class ApiError extends Error {
   }
 }
 
+const REQUEST_TIMEOUT_MS = 20000
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(API_BASE + path, {
-    method,
-    credentials: 'include',
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
+  // Zaman aşımı: takılan bir bağlantı girişi/eşitlemeyi sonsuza dek dondurmasın.
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await fetch(API_BASE + path, {
+      method,
+      credentials: 'include',
+      headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+    })
+  } catch (e) {
+    const aborted = e instanceof DOMException && e.name === 'AbortError'
+    throw new ApiError(0, aborted ? 'timeout' : 'network', aborted ? 'Sunucu yanıt vermedi (zaman aşımı)' : 'Ağ hatası')
+  } finally {
+    clearTimeout(timer)
+  }
   const text = await res.text()
   let json: unknown = {}
   if (text) {
