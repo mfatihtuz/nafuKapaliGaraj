@@ -1,12 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../auth/AuthContext'
 import { api, ApiError } from '../../sync/api'
 import type { LabelType } from '../../db/types'
 import { DEFAULT_LABEL_TYPES, DEFAULT_LABEL_GRID } from '../../lib/labelDefaults'
+import { computeGrid } from '../../lib/labelSheet'
 import { uuidv7 } from '../../lib/uuid'
 import { useT } from '../../i18n'
 import { useToast } from '../Toast'
 import { IconPlus, IconTrash } from '../icons'
+
+/** Hiç ayarlanmamış (null/undefined) ise varsayılanları göster; boş dizi ([]) kullanıcının
+ *  bilinçli "tip yok" tercihidir — varsayılanlarla EZİLMEZ. */
+function resolveTypes(st: LabelType[] | null | undefined): LabelType[] {
+  return st == null ? DEFAULT_LABEL_TYPES : st
+}
+
+/** Kaydetmeden önce sütun/satırı En×Boy'dan A4'e göre türet (elle girilmez). */
+function withGrid(tp: LabelType): LabelType {
+  const g = computeGrid(tp.w_mm, tp.h_mm)
+  return { ...tp, cols: g.cols, rows: g.rows }
+}
 
 export function LabelsSection() {
   const { t } = useT()
@@ -14,19 +27,16 @@ export function LabelsSection() {
   const toast = useToast()
   const s = auth?.tenant.settings
   const grid = s?.label_grid ?? DEFAULT_LABEL_GRID
-  const serverTypes = s?.label_types
 
   const [w, setW] = useState(String(grid.w_mm))
   const [h, setH] = useState(String(grid.h_mm))
-  const [cols, setCols] = useState(String(grid.cols))
-  const [rows, setRows] = useState(String(grid.rows))
   const [qrBase, setQrBase] = useState(s?.qr_base_url ?? '')
-  // Sunucuda tip yoksa varsayılanları göster (kullanıcı Kaydet ile kalıcılaştırır).
-  const [types, setTypes] = useState<LabelType[]>(
-    serverTypes && serverTypes.length ? serverTypes : DEFAULT_LABEL_TYPES,
-  )
+  const [types, setTypes] = useState<LabelType[]>(resolveTypes(s?.label_types))
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
+  // Kaydet sırasında gelen düzenlemeleri kaybetmemek için düzenleme sayacı.
+  const editSeq = useRef(0)
+  function touch() { editSeq.current++; setDirty(true) }
 
   // Açılışta sunucudan en güncel ayarları çek (önbellekteki kimlik eski olabilir).
   useEffect(() => {
@@ -39,39 +49,42 @@ export function LabelsSection() {
   useEffect(() => {
     if (dirty) return
     const g = s?.label_grid ?? DEFAULT_LABEL_GRID
-    setW(String(g.w_mm)); setH(String(g.h_mm)); setCols(String(g.cols)); setRows(String(g.rows))
+    setW(String(g.w_mm)); setH(String(g.h_mm))
     setQrBase(s?.qr_base_url ?? '')
-    setTypes(s?.label_types && s.label_types.length ? s.label_types : DEFAULT_LABEL_TYPES)
+    setTypes(resolveTypes(s?.label_types))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverKey])
 
   function patchType(id: string, patch: Partial<LabelType>) {
-    setDirty(true)
+    touch()
     setTypes((ts) => ts.map((t2) => (t2.id === id ? { ...t2, ...patch } : t2)))
   }
   function addType() {
-    setDirty(true)
-    setTypes((ts) => [...ts, { id: uuidv7(), name: '', w_mm: Number(w) || 38, h_mm: Number(h) || 21, cols: Number(cols) || 5, rows: Number(rows) || 13, qty: 0 }])
+    touch()
+    setTypes((ts) => [...ts, { id: uuidv7(), name: '', w_mm: Number(w) || 38, h_mm: Number(h) || 21, cols: 5, rows: 13, qty: 0 }])
   }
   function removeType(id: string) {
-    setDirty(true)
+    touch()
     setTypes((ts) => ts.filter((x) => x.id !== id))
   }
   function loadDefaults() {
-    setDirty(true)
+    touch()
     setTypes(DEFAULT_LABEL_TYPES)
     toast.show(t('settings.labels_cfg.defaults_loaded'), 'info')
   }
 
   async function save() {
     setBusy(true)
+    const seq = editSeq.current
     try {
+      const g = computeGrid(Number(w), Number(h))
       await api.updateOrgSettings({
-        label_grid: { w_mm: Number(w), h_mm: Number(h), cols: Number(cols), rows: Number(rows) },
+        label_grid: { w_mm: Number(w), h_mm: Number(h), cols: g.cols, rows: g.rows },
         qr_base_url: qrBase.trim(),
-        label_types: types.filter((tp) => tp.name.trim() !== ''),
+        label_types: types.filter((tp) => tp.name.trim() !== '').map(withGrid),
       })
-      setDirty(false)
+      // Kaydet sırasında yeni düzenleme gelmediyse temizle (yoksa düzenleme korunur).
+      if (editSeq.current === seq) setDirty(false)
       await refresh()
       toast.show(t('settings.labels_cfg.saved'), 'success')
     } catch (e) {
@@ -85,9 +98,12 @@ export function LabelsSection() {
     <div>
       <label className="field-label">{label}</label>
       <input className="input" type="number" inputMode="numeric" value={val}
-        onChange={(e) => { setDirty(true); set(e.target.value) }} />
+        onChange={(e) => { touch(); set(e.target.value) }} />
     </div>
   )
+
+  // Üst kartın (varsayılan sayfa) türetilmiş ızgarası
+  const defGrid = computeGrid(Number(w), Number(h))
 
   return (
     <div className="space-y-4">
@@ -98,15 +114,20 @@ export function LabelsSection() {
         <div className="grid gap-4 sm:grid-cols-2">
           {num(t('settings.labels_cfg.w'), w, setW)}
           {num(t('settings.labels_cfg.h'), h, setH)}
-          {num(t('settings.labels_cfg.cols'), cols, setCols)}
-          {num(t('settings.labels_cfg.rows'), rows, setRows)}
+          <div className="sm:col-span-2 flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2.5 text-sm">
+            <span className="font-semibold text-brand-700">{t('settings.labels_cfg.a4_fit')}:</span>
+            <span className="tabular-nums text-brand-800">
+              {defGrid.cols} × {defGrid.rows} = {defGrid.cols * defGrid.rows} {t('settings.labels_cfg.per_page')}
+            </span>
+          </div>
           <div className="sm:col-span-2">
             <label className="field-label">{t('settings.labels_cfg.qr_base')}</label>
             <input className="input font-mono text-sm" value={qrBase}
-              onChange={(e) => { setDirty(true); setQrBase(e.target.value) }} autoCapitalize="none" />
+              onChange={(e) => { touch(); setQrBase(e.target.value) }} autoCapitalize="none" />
             <p className="field-hint">{t('settings.labels_cfg.qr_explain')}</p>
           </div>
         </div>
+        <p className="mt-3 text-xs text-brand-300">{t('settings.labels_cfg.print_scale')}</p>
       </div>
 
       {/* Etiket tipleri + adet */}
@@ -123,34 +144,36 @@ export function LabelsSection() {
         </div>
 
         <div className="space-y-2">
-          {types.map((tp) => (
-            <div key={tp.id} className="rounded-lg border border-line bg-canvas p-3">
-              <div className="flex items-center gap-2">
-                <input className="input h-9 flex-1" placeholder={t('settings.labels_cfg.type_name')} value={tp.name}
-                  onChange={(e) => patchType(tp.id, { name: e.target.value })} />
-                <button onClick={() => removeType(tp.id)} className="btn-icon h-9 w-9 text-brand-300 hover:bg-red-50 hover:text-red-600">
-                  <IconTrash size={16} />
-                </button>
+          {types.map((tp) => {
+            const g = computeGrid(tp.w_mm, tp.h_mm)
+            return (
+              <div key={tp.id} className="rounded-lg border border-line bg-canvas p-3">
+                <div className="flex items-center gap-2">
+                  <input className="input h-9 flex-1" placeholder={t('settings.labels_cfg.type_name')} value={tp.name}
+                    onChange={(e) => patchType(tp.id, { name: e.target.value })} />
+                  <button onClick={() => removeType(tp.id)} className="btn-icon h-9 w-9 text-brand-300 hover:bg-red-50 hover:text-red-600">
+                    <IconTrash size={16} />
+                  </button>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <label className="text-xs text-brand-400">{t('settings.labels_cfg.w')}
+                    <input className="input mt-0.5 h-9" type="number" value={tp.w_mm} onChange={(e) => patchType(tp.id, { w_mm: Number(e.target.value) })} />
+                  </label>
+                  <label className="text-xs text-brand-400">{t('settings.labels_cfg.h')}
+                    <input className="input mt-0.5 h-9" type="number" value={tp.h_mm} onChange={(e) => patchType(tp.id, { h_mm: Number(e.target.value) })} />
+                  </label>
+                  <label className="text-xs font-semibold text-brand-600">{t('settings.labels_cfg.qty')}
+                    <input className="input mt-0.5 h-9 font-semibold" type="number" value={tp.qty} onChange={(e) => patchType(tp.id, { qty: Number(e.target.value) })} />
+                  </label>
+                  <div className="text-xs text-brand-400">{t('settings.labels_cfg.a4_fit')}
+                    <div className="mt-0.5 flex h-9 items-center rounded-lg bg-brand-50 px-2 tabular-nums text-brand-700">
+                      {g.cols}×{g.rows} · {g.cols * g.rows}/{t('settings.labels_cfg.page')}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                <label className="text-xs text-brand-400">{t('settings.labels_cfg.w')}
-                  <input className="input mt-0.5 h-9" type="number" value={tp.w_mm} onChange={(e) => patchType(tp.id, { w_mm: Number(e.target.value) })} />
-                </label>
-                <label className="text-xs text-brand-400">{t('settings.labels_cfg.h')}
-                  <input className="input mt-0.5 h-9" type="number" value={tp.h_mm} onChange={(e) => patchType(tp.id, { h_mm: Number(e.target.value) })} />
-                </label>
-                <label className="text-xs text-brand-400">{t('settings.labels_cfg.cols')}
-                  <input className="input mt-0.5 h-9" type="number" value={tp.cols} onChange={(e) => patchType(tp.id, { cols: Number(e.target.value) })} />
-                </label>
-                <label className="text-xs text-brand-400">{t('settings.labels_cfg.rows')}
-                  <input className="input mt-0.5 h-9" type="number" value={tp.rows} onChange={(e) => patchType(tp.id, { rows: Number(e.target.value) })} />
-                </label>
-                <label className="text-xs font-semibold text-brand-600">{t('settings.labels_cfg.qty')}
-                  <input className="input mt-0.5 h-9 font-semibold" type="number" value={tp.qty} onChange={(e) => patchType(tp.id, { qty: Number(e.target.value) })} />
-                </label>
-              </div>
-            </div>
-          ))}
+            )
+          })}
           {types.length === 0 && <p className="py-4 text-center text-sm text-brand-300">{t('settings.labels_cfg.no_types')}</p>}
         </div>
       </div>

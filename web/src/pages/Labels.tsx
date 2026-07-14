@@ -3,6 +3,8 @@ import { AppHeader, Container } from '../components/Layout'
 import { useLocations } from '../db/queries'
 import { useAuth } from '../auth/AuthContext'
 import { locationUrl, qrDataUrl } from '../lib/qr'
+import { computeGrid } from '../lib/labelSheet'
+import { DEFAULT_LABEL_TYPES, DEFAULT_LABEL_GRID } from '../lib/labelDefaults'
 import { useT } from '../i18n'
 import { IconTag } from '../components/icons'
 
@@ -13,7 +15,8 @@ export function Labels() {
   const { auth } = useAuth()
   const locations = useLocations()
   const settings = auth?.tenant.settings
-  const types = settings?.label_types ?? []
+  // Ayarlar sayfasıyla tutarlı: hiç ayarlanmadıysa (null/undefined) varsayılanlar; boş dizi ([]) ise yok.
+  const types = settings?.label_types == null ? DEFAULT_LABEL_TYPES : settings.label_types
 
   const cabinets = useMemo(
     () => locations.filter((l) => l.type === 'cabinet').sort((a, b) => a.sort_order - b.sort_order),
@@ -25,7 +28,10 @@ export function Labels() {
   const [busy, setBusy] = useState(false)
 
   const selectedType = types.find((tp) => tp.id === typeId)
-  const grid = selectedType ?? settings?.label_grid ?? { w_mm: 38, h_mm: 21, cols: 5, rows: 13 }
+  const size = selectedType ?? settings?.label_grid ?? DEFAULT_LABEL_GRID
+  // Sütun sayısı En×Boy'dan A4'e göre TÜRETİLİR (elle girilen değere güvenilmez → taşma olmaz).
+  const derived = computeGrid(size.w_mm, size.h_mm)
+  const grid = { w_mm: size.w_mm, h_mm: size.h_mm, cols: derived.cols, rows: derived.rows }
 
   async function generate() {
     const cab = cabinets.find((c) => c.id === cabinetId)

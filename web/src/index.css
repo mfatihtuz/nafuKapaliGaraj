@@ -77,7 +77,14 @@
   .row { @apply flex items-center gap-3 border-b border-line py-3 last:border-0; }
 }
 
+/* Etiketler gerçek fiziksel boyutta (mm) ve A4'e göre dizilir. */
+@page {
+  size: A4;
+  margin: 6mm;
+}
 @media print {
   .no-print { display: none !important; }
   body { background: #fff; }
+  /* Tarayıcı ölçeklemesini engelle — mm ölçüleri birebir bassın. */
+  html, body { width: 210mm; }
 }

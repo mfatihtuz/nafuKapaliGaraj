@@ -10,6 +10,8 @@
 --   Bu dosyanın tamamını yapıştır → Çalıştır.
 -- ============================================================
 
+SET NAMES utf8mb4;
+
 UPDATE tenants
 SET settings = JSON_SET(
   COALESCE(settings, JSON_OBJECT()),
