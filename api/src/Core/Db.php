@@ -38,6 +38,12 @@ final class Db
 
     public function pdo(): PDO { return $this->pdo; }
 
+    /** Sürücü MySQL/MariaDB mi? (GET_LOCK / FOR UPDATE gibi eklentiler için; testler SQLite.) */
+    public function isMysql(): bool
+    {
+        return $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql';
+    }
+
     /** @param array<string,mixed> $params */
     public function run(string $sql, array $params = []): \PDOStatement
     {

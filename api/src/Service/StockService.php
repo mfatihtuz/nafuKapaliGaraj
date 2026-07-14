@@ -80,7 +80,8 @@ final class StockService
             throw HttpException::unprocessable('counted_qty negatif olamaz');
         }
 
-        $current = $this->stockRepo->getQty($partId, $locationId);
+        // Kilitli okuma: eşzamanlı sayım/hareket delta'yı bayatlatmasın (çift düzeltme).
+        $current = $this->stockRepo->getQtyForUpdate($partId, $locationId);
         $delta = $counted - $current;
 
         return $this->applyMove([

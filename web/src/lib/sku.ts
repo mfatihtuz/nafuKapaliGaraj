@@ -2,7 +2,18 @@
 // SKU daima ASCII/İngilizce (CLAUDE.md §5): 'R-{package}-{value}-{tolerance}' → 'R-0805-10K-1P'
 
 import type { Category, PartAttributes } from '../db/types'
-import { foldToAscii } from './normalize'
+import { foldToAscii, normalize } from './normalize'
+
+/**
+ * Arama etiketleri: ad + kategori adları + öznitelik değerlerinden normalize token seti.
+ * Parça adı/özellikleri her değiştiğinde YENİDEN üretilmeli (arama eski ada takılmasın).
+ */
+export function buildTags(name: string, attrs: PartAttributes | null, cat: Category | undefined): string {
+  const parts = [name, cat?.name_tr ?? '', cat?.name_en ?? '', ...Object.values(attrs ?? {}).map((v) => (v == null ? '' : String(v)))]
+  const tokens = new Set<string>()
+  for (const p of parts) for (const w of normalize(p).split(/\s+/)) if (w) tokens.add(w)
+  return [...tokens].join(',')
+}
 
 function skuToken(raw: string): string {
   return foldToAscii(raw)
@@ -68,7 +79,8 @@ export function deriveSkuTemplate(
   schema: { key: string; in_sku?: boolean }[],
   prevTemplate?: string | null,
 ): string {
-  const inSkuKeys = schema.filter((a) => a.in_sku && a.key).map((a) => a.key)
+  // Aynı anahtar iki kez tanımlansa bile şablona bir kez girer ({x}-{x} olmasın).
+  const inSkuKeys = [...new Set(schema.filter((a) => a.in_sku && a.key).map((a) => a.key))]
   const inSkuSet = new Set(inSkuKeys)
   // Önceki şablondaki sırayı koru (yalnızca hâlâ işaretli olanlar).
   const kept = skuKeys(prevTemplate).filter((k) => inSkuSet.has(k))

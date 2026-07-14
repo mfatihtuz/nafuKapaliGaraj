@@ -105,13 +105,44 @@ export function CategoriesSection({ canWrite }: { canWrite: boolean }) {
   const toggle = (id: string) =>
     setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
 
+  /** id + tüm alt kategorileri (üst kategori seçiminde döngüyü önlemek için). */
+  function selfAndDescendants(id: string): Set<string> {
+    const out = new Set<string>([id])
+    let grew = true
+    while (grew) {
+      grew = false
+      for (const c of categories) {
+        if (c.parent_id && out.has(c.parent_id) && !out.has(c.id)) { out.add(c.id); grew = true }
+      }
+    }
+    return out
+  }
+
   async function save() {
     if (!draft) return
-    if (!draft.name_tr.trim() || !draft.code.trim()) {
-      toast.show('Ad ve kod öneki gerekli', 'error')
+    const code = foldToAscii(draft.code).toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (!draft.name_tr.trim() || !code) {
+      toast.show(t('settings.categories.need_name_code'), 'error')
       return
     }
-    await saveCategory({ ...draft, code: foldToAscii(draft.code).toUpperCase().replace(/[^A-Z0-9]/g, '') })
+    // Kod tekilliği: aynı önek iki kategoride olursa farklı parçaların SKU'ları çakışıp
+    // Parça Ekle'de yanlışlıkla birleştirilebilir.
+    if (categories.some((c) => c.id !== draft.id && c.code === code)) {
+      toast.show(t('settings.categories.code_taken', { code }), 'error')
+      return
+    }
+    // Öznitelik anahtarları tekil olmalı (şablon ve form aynı anahtara iki kez bakamaz).
+    const keys = (draft.attribute_schema ?? []).map((a) => a.key).filter(Boolean)
+    if (new Set(keys).size !== keys.length) {
+      toast.show(t('settings.categories.dup_attr'), 'error')
+      return
+    }
+    // Döngü koruması (savunma derinliği — seçenek listesi zaten engelliyor).
+    if (draft.parent_id && selfAndDescendants(draft.id).has(draft.parent_id)) {
+      toast.show(t('settings.categories.cycle'), 'error')
+      return
+    }
+    await saveCategory({ ...draft, code })
     setDraft(null)
     toast.show(t('common.save'), 'success')
   }
@@ -196,7 +227,9 @@ export function CategoriesSection({ canWrite }: { canWrite: boolean }) {
               <label className="field-label">{t('settings.categories.parent')}</label>
               <select className="select" value={draft.parent_id ?? ''} onChange={(e) => setDraft({ ...draft, parent_id: e.target.value || null })}>
                 <option value="">{t('settings.categories.no_parent')}</option>
-                {categories.filter((c) => c.id !== draft.id).map((c) => <option key={c.id} value={c.id}>{c.name_tr}</option>)}
+                {/* Kendisi ve altları seçilemez — kategori kendi alt ağacına bağlanırsa ağaç kaybolur. */}
+                {(() => { const banned = selfAndDescendants(draft.id); return categories.filter((c) => !banned.has(c.id)) })()
+                  .map((c) => <option key={c.id} value={c.id}>{c.name_tr}</option>)}
               </select>
             </div>
             <div>

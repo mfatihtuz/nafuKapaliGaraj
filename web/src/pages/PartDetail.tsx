@@ -7,6 +7,7 @@ import {
 import type { CountMode, Part, Stock, Location } from '../db/types'
 import { savePart, softDeletePart, movePartStock } from '../db/actions'
 import { LEVEL_LABEL, REASON_LABEL, timeAgo } from '../lib/format'
+import { buildTags } from '../lib/sku'
 import { UNITS } from '../lib/units'
 import { StockControl } from '../components/StockControl'
 import { useT } from '../i18n'
@@ -130,9 +131,14 @@ export function PartDetail() {
     setDraft({ ...part! })
     setEditing(true)
   }
+  function cancelEdit() {
+    setEditing(false)
+    setDraft(null)
+  }
   async function save() {
     if (!draft) return
-    await savePart(draft)
+    // Ad/özellik değişmiş olabilir — arama etiketlerini yeniden üret (eski ada takılmasın).
+    await savePart({ ...draft, tags: buildTags(draft.name, draft.attributes, category) })
     setEditing(false)
     setDraft(null)
     toast.show(t('common.save'), 'success')
@@ -152,9 +158,14 @@ export function PartDetail() {
         back
         right={
           !canWrite ? null : editing ? (
-            <button onClick={() => void save()} className="btn-primary h-9 px-3 text-sm">
-              <IconCheck size={16} /> {t('common.save')}
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button onClick={cancelEdit} className="btn h-9 px-3 text-sm text-white/80 hover:bg-white/10">
+                {t('common.cancel')}
+              </button>
+              <button onClick={() => void save()} className="btn-primary h-9 px-3 text-sm">
+                <IconCheck size={16} /> {t('common.save')}
+              </button>
+            </div>
           ) : (
             <button onClick={startEdit} aria-label={t('part.edit')} title={t('part.edit')} className="btn-icon h-9 w-9 text-white/90 hover:bg-white/10">
               <IconEdit size={18} />

@@ -4,7 +4,7 @@ import { AppHeader, Container } from '../components/Layout'
 import { useCategories, useLocations } from '../db/queries'
 import { AttributeForm } from '../components/AttributeForm'
 import type { Category, Location, Part, PartAttributes, StockLevel } from '../db/types'
-import { buildSku, autoName } from '../lib/sku'
+import { buildSku, autoName, buildTags } from '../lib/sku'
 import { UNITS } from '../lib/units'
 import { normalize } from '../lib/normalize'
 import { uuidv7 } from '../lib/uuid'
@@ -17,13 +17,6 @@ import { useToast } from '../components/Toast'
 import { IconCheck, IconChevronRight, IconBack, IconSearch, IconFolder } from '../components/icons'
 
 const LEVELS: StockLevel[] = ['full', 'low', 'empty']
-
-function buildTags(name: string, attrs: PartAttributes, cat: Category | undefined): string {
-  const parts = [name, cat?.name_tr ?? '', cat?.name_en ?? '', ...Object.values(attrs).map(String)]
-  const tokens = new Set<string>()
-  for (const p of parts) for (const w of normalize(p).split(/\s+/)) if (w) tokens.add(w)
-  return [...tokens].join(',')
-}
 
 function Stepper({ step, labels }: { step: number; labels: string[] }) {
   return (
@@ -78,11 +71,11 @@ export function Intake() {
       if (q && !normalize(c.name_tr).includes(q) && !normalize(c.code).includes(q)) continue
       const parent = categories.find((p) => p.id === c.parent_id)
       const key = parent?.id ?? 'root'
-      if (!map.has(key)) map.set(key, { name: parent?.name_tr ?? 'Diğer', items: [] })
+      if (!map.has(key)) map.set(key, { name: parent?.name_tr ?? t('intake.group_other'), items: [] })
       map.get(key)!.items.push(c)
     }
     return [...map.values()]
-  }, [selectable, categories, catQuery])
+  }, [selectable, categories, catQuery, t])
 
   const category = categories.find((c) => c.id === catId)
   const sku = category ? buildSku(category.sku_template, attrs) : ''
@@ -133,6 +126,12 @@ export function Intake() {
       const finalName = name.trim() || autoName(category, attrs)
       let partId: string
       if (existing && !existing.deleted_at) {
+        // Mevcut parçanın sayım yöntemi formdakiyle uyuşmalı — yoksa miktarlı parçaya
+        // doluluk (veya tersi) yazılıp stok bozulur.
+        if (existing.count_mode !== mode) {
+          toast.show(t('intake.mode_conflict', { code: sku, mode: t(`count_mode.${existing.count_mode}`) }), 'error')
+          return
+        }
         partId = existing.id
         toast.show(t('intake.add_to_existing'), 'info')
       } else {
@@ -150,7 +149,8 @@ export function Intake() {
       } else if (mode === 'level' && level) {
         await setLevel(partId, locationMatch.id, level)
       } else if (mode === 'unmanaged') {
-        await moveStock({ partId, locationId: locationMatch.id, delta: 0, reason: 'initial' })
+        // Varlık işareti: +1. (Taşıma −1/+1 ile çalışır; qty<0 satır "orada değil" sayılır.)
+        await moveStock({ partId, locationId: locationMatch.id, delta: 1, reason: 'initial' })
       }
       toast.show(t('intake.saved', { code: sku }), 'success')
       // Seri modda: aynı kategori, temiz form, 2. adıma dön.

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
 import type { AuthState } from '../db/types'
-import { getAuth, setAuth as persistAuth, wipeLocalData } from '../db/dexie'
+import { db, getAuth, setAuth as persistAuth, wipeLocalData } from '../db/dexie'
 import { api } from '../sync/api'
 import { engine } from '../sync/engine'
 
@@ -48,6 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (identifier: string, password: string) => {
     const result = await api.login(identifier, password)
+    // Tenant izolasyonu: farklı kullanıcı/organizasyon girişinde önceki yerel
+    // veri (envanter + outbox) SİLİNİR — önceki hesabın verisi yenisine sızmaz.
+    const prev = await getAuth()
+    if (prev && (prev.user.id !== result.user.id || prev.tenant.id !== result.tenant.id)) {
+      engine.stop()
+      await wipeLocalData()
+    }
     await persistAuth(result)
     setAuthState(result)
     setAuthExpired(false)
@@ -66,6 +73,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(async () => {
+    // Bekleyen (henüz push edilmemiş) işlemler çıkışta silinir — önce göndermeyi
+    // dene; hâlâ bekleyen varsa kullanıcıya sor. Sessiz veri kaybı yok.
+    try {
+      await engine.sync()
+    } catch {
+      /* çevrimdışı olabilir */
+    }
+    const pending = await db.outbox.count()
+    if (pending > 0) {
+      const ok = confirm(
+        `${pending} işlem henüz sunucuya gönderilmedi. Çıkarsanız bu işlemler KAYBOLUR.\n` +
+        'Yine de çıkılsın mı? (İnternete bağlanıp eşitlenmesini beklemek daha güvenlidir.)',
+      )
+      if (!ok) return
+    }
     try {
       await api.logout()
     } catch {

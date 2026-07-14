@@ -306,6 +306,39 @@ await sect('B-partdetail', {}, async ({ page, pageErrors }) => {
   await page.getByRole('button', { name: 'Kaydet' }).first().click(); await page.waitForTimeout(500)
   check('B11 sayım modu exact→level kaydedildi', (await dexie(page, 'parts')).find((p) => p.id === 'p-r')?.count_mode === 'level')
 
+  // B11.2: −N clamp — eldekinden fazlası düşülemez (negatif stok yasak)
+  await page.goto(BASE + 'parts/p-cam', { waitUntil: 'networkidle' }); await page.waitForTimeout(300)
+  // (p-cam level modda; clamp testi için p-qrt exact qty=3'ü kullan)
+  await page.goto(BASE + 'parts/p-qrt', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  await page.getByRole('button', { name: /· −N/ }).click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder="N"]').fill('999')
+  await page.getByRole('button', { name: '−N', exact: true }).click(); await page.waitForTimeout(400)
+  const qrtQty = (await dexie(page, 'stock')).find((s) => s.key === 'p-qrt|qrt')?.qty
+  check('B11.2 −N eldekiyle sınırlandı (999 → 0, negatif değil)', qrtQty === 0, `qty=${qrtQty}`)
+
+  // B11.3: takipsiz parça taşıma — kaynak "orada değil" olur, hedef görünür
+  await page.goto(BASE + 'parts/p-unm', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  await page.locator('button[title="Taşı"]').first().click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder*="konum"]').fill('D2')
+  await page.locator('button.btn-primary', { hasText: 'Taşı' }).click(); await page.waitForTimeout(600)
+  const unmSt = await dexie(page, 'stock')
+  const unmSrc = unmSt.find((s) => s.key === 'p-unm|d1'); const unmDst = unmSt.find((s) => s.key === 'p-unm|d2')
+  check('B11.3 takipsiz taşıma: kaynak −1 (gizli), hedef +1', unmSrc?.qty === -1 && unmDst?.qty === 1, `src=${unmSrc?.qty} dst=${unmDst?.qty}`)
+  check('B11.4 taşıma sonrası yalnızca yeni konum listede', (await bodyText(page)).includes('D2') && !(await bodyText(page)).match(/\bD1\b/))
+
+  // B11.5: sayım yöntemi çakışması — p-r artık 'level' (B11); intake'te aynı SKU exact girilemez
+  await page.goto(BASE + 'intake', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: /Direnç/ }).first().click(); await page.waitForTimeout(300)
+  await page.locator('#attr-deger').fill('10K')
+  await page.getByRole('button', { name: '0805', exact: true }).click(); await page.waitForTimeout(200)
+  await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
+  await page.locator('input[list="loc-codes"]').fill('D1')
+  await page.locator('input[placeholder="0"]').fill('7'); await page.waitForTimeout(200)
+  await page.getByRole('button', { name: /Kaydet/ }).last().click(); await page.waitForTimeout(500)
+  const conflictTxt = await bodyText(page)
+  const rStockAfter = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1')
+  check('B11.5 sayım yöntemi çakışması engellendi + uyarı', conflictTxt.includes('sayım yöntemi') && rStockAfter?.qty !== 7, conflictTxt.slice(0, 100))
+
   // B12: arşivle (depodan kaldır) — confirm otomatik kabul
   await page.goto(BASE + 'parts/p-unm', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
   await page.getByRole('button', { name: /depodan kaldır/i }).click(); await page.waitForTimeout(600)

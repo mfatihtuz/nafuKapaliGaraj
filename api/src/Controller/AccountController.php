@@ -23,10 +23,12 @@ final class AccountController
     public function changePassword(Request $req, Response $res, array $params, ?Context $ctx): void
     {
         if ($ctx === null) throw HttpException::unauthorized();
+        $cookieName = (string) ($this->config['security']['cookie_name'] ?? 'depo_session');
         $this->svc->changePassword(
             $ctx->userId,
             (string) $req->input('current_password', ''),
-            (string) $req->input('new_password', '')
+            (string) $req->input('new_password', ''),
+            $req->bearerOrCookie($cookieName) // mevcut oturum korunur, diğerleri kapanır
         );
         $res->json(['ok' => true]);
     }

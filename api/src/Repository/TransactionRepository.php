@@ -68,7 +68,11 @@ final class TransactionRepository
             ]
         );
 
-        return $this->db->one('SELECT * FROM stock_transactions WHERE id = :id', ['id' => $id]) ?? [];
+        // Savunma derinliği: dönüş SELECT'i de tenant kapsamlı.
+        return $this->db->one(
+            'SELECT * FROM stock_transactions WHERE id = :id AND tenant_id = :tid',
+            ['id' => $id, 'tid' => $this->tenantId]
+        ) ?? [];
     }
 
     /** Bootstrap: son N gün + açılış (initial) hareketleri. @return list<array<string,mixed>> */

@@ -20,7 +20,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   const text = await res.text()
-  const json: unknown = text ? JSON.parse(text) : {}
+  let json: unknown = {}
+  if (text) {
+    try {
+      json = JSON.parse(text)
+    } catch {
+      // Paylaşımlı hosting hata sayfası / captive portal HTML dönebilir —
+      // ham SyntaxError yerine anlaşılır, yakalanabilir bir hata üret.
+      throw new ApiError(res.status, 'bad_response', 'Sunucudan beklenmeyen yanıt alındı')
+    }
+  }
   if (!res.ok) {
     const obj = json as { error?: string; message?: string }
     throw new ApiError(res.status, obj.error ?? 'error', obj.message ?? res.statusText)

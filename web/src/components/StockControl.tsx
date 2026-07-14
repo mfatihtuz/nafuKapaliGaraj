@@ -81,7 +81,8 @@ export function StockControl({ part, stock, locationId }: Props) {
       <div className="flex items-center gap-2">
         <button
           onClick={() => void moveStock({ partId: part.id, locationId, delta: -1, reason: 'consume' })}
-          className="btn-navy min-h-touch min-w-touch text-xl"
+          disabled={qty <= 0}
+          className="btn-navy min-h-touch min-w-touch text-xl disabled:opacity-40"
           aria-label="−1"
         >
           <IconMinus />
@@ -115,7 +116,9 @@ export function StockControl({ part, stock, locationId }: Props) {
           <button
             className="btn-danger h-10 px-3 text-sm"
             onClick={() => {
-              const n = Math.abs(Number(nVal))
+              // Eldeki miktardan fazlası düşülemez — stok sessizce negatife inmesin
+              // (negatif satır 'tükenmiş' sayılıp listeden kaybolur, kullanıcı şaşırır).
+              const n = Math.min(Math.abs(Number(nVal)), qty)
               if (n > 0) void moveStock({ partId: part.id, locationId, delta: -n, reason: 'consume' })
               setNVal('')
               setShowN(false)

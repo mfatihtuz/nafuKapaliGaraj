@@ -102,6 +102,35 @@ final class SyncService
         $applied = [];
         $rejected = [];
 
+        // Tenant-bazlı serileştirme: eşzamanlı iki push'ta change_log.seq'in commit
+        // sırası ile artış sırası ayrışabilir; araya giren bir pull, cursor'ı ileri
+        // taşıyıp henüz commit edilmemiş küçük seq'li satırı SONSUZA DEK atlardı.
+        // GET_LOCK paylaşımlı hostingde çalışır; alınamazsa hata → istemci sonra dener.
+        $lockName = null;
+        if ($this->db->isMysql()) {
+            $lockName = 'depo:push:' . $this->tenantId;
+            $got = $this->db->one('SELECT GET_LOCK(:n, 10) AS l', ['n' => $lockName]);
+            if ((int) ($got['l'] ?? 0) !== 1) {
+                throw HttpException::tooManyRequests('Eşzamanlı senkronizasyon — biraz sonra tekrar deneyin');
+            }
+        }
+        try {
+            return $this->pushLocked($ops, $applied, $rejected);
+        } finally {
+            if ($lockName !== null) {
+                $this->db->run('SELECT RELEASE_LOCK(:n)', ['n' => $lockName]);
+            }
+        }
+    }
+
+    /**
+     * @param list<array<string,mixed>> $ops
+     * @param list<string> $applied
+     * @param list<array<string,mixed>> $rejected
+     * @return array{applied:list<string>,rejected:list<array<string,mixed>>,cursor:int}
+     */
+    private function pushLocked(array $ops, array $applied, array $rejected): array
+    {
         foreach ($ops as $op) {
             $opId = is_string($op['op_id'] ?? null) ? $op['op_id'] : '';
             if (!Uuid::isV7($opId)) {

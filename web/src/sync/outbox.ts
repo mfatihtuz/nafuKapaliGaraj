@@ -70,11 +70,42 @@ async function revertLocal(op: OutboxOp): Promise<void> {
   // bootstrap'ta düzelir (nadir kalıcı red).
 }
 
-/** Kuyruğu sunucuya push eder. @returns applied / rejected sayıları. */
-export async function pushOutbox(): Promise<{ applied: number; rejected: number; sent: number }> {
-  const ops = await db.outbox.orderBy('seq').toArray()
-  if (ops.length === 0) return { applied: 0, rejected: 0, sent: 0 }
+/** Sunucunun tek push'ta kabul ettiği üst sınırın altında güvenli dilim boyu. */
+const PUSH_CHUNK = 500
 
+/**
+ * Bir 'not_found' reddi gerçekten kalıcı mı? Aynı varlığın upsert'i hâlâ kuyruktaysa
+ * (upsert geçici hatayla reddedilmiş olabilir) hareket DÜŞÜRÜLMEZ — upsert başarılı
+ * olunca sonraki turda uygulanır. Yoksa: yeni parça + açılış stoğu offline girilirken
+ * upsert'in tek geçici hatası stok hareketini kalıcı kaybettirir.
+ */
+function notFoundButUpsertPending(op: OutboxOp, queue: OutboxOp[]): boolean {
+  if (op.type !== 'stock_move' && op.type !== 'stock_audit') return false
+  const d = op.data as { part_id?: string; location_id?: string } | null
+  return queue.some((o) =>
+    o.type === 'upsert' && o.op_id !== op.op_id &&
+    ((o.data as { id?: string } | null)?.id === d?.part_id ||
+     (o.data as { id?: string } | null)?.id === d?.location_id))
+}
+
+/** Kuyruğu sunucuya push eder (dilimleyerek). @returns applied / rejected sayıları. */
+export async function pushOutbox(): Promise<{ applied: number; rejected: number; sent: number }> {
+  const all = await db.outbox.orderBy('seq').toArray()
+  if (all.length === 0) return { applied: 0, rejected: 0, sent: 0 }
+
+  let appliedTotal = 0
+  let rejectedTotal = 0
+  // Sunucu limiti 1000/op — dilimle; her dilim kendi içinde sıralı işlenir.
+  for (let i = 0; i < all.length; i += PUSH_CHUNK) {
+    const chunk = all.slice(i, i + PUSH_CHUNK)
+    const r = await pushChunk(chunk, all)
+    appliedTotal += r.applied
+    rejectedTotal += r.rejected
+  }
+  return { applied: appliedTotal, rejected: rejectedTotal, sent: all.length }
+}
+
+async function pushChunk(ops: OutboxOp[], queue: OutboxOp[]): Promise<{ applied: number; rejected: number }> {
   const payload = ops.map((o) => ({
     op_id: o.op_id,
     type: o.type,
@@ -93,7 +124,8 @@ export async function pushOutbox(): Promise<{ applied: number; rejected: number;
     const op = ops.find((o) => o.op_id === rej.op_id)
     if (!op) continue
     const attempts = op.attempts + 1
-    const permanent = PERMANENT.has(rej.reason) || attempts >= MAX_ATTEMPTS
+    const dependencyPending = rej.reason === 'not_found' && notFoundButUpsertPending(op, queue)
+    const permanent = !dependencyPending && (PERMANENT.has(rej.reason) || attempts >= MAX_ATTEMPTS)
 
     if (permanent) {
       // Görünür şekilde logla, yerel optimistik etkiyi geri al, kuyruktan çıkar.
@@ -113,5 +145,5 @@ export async function pushOutbox(): Promise<{ applied: number; rejected: number;
   }
   await logErrors(permanentErrors)
 
-  return { applied: result.applied.length, rejected: result.rejected.length, sent: ops.length }
+  return { applied: result.applied.length, rejected: result.rejected.length }
 }

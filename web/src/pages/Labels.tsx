@@ -104,7 +104,7 @@ export function Labels() {
               <div
                 key={l.code}
                 className="flex items-center gap-[1mm] overflow-hidden rounded-[1mm] border border-mist bg-white p-[1mm]"
-                style={{ width: `${grid.w_mm}mm`, height: `${grid.h_mm}mm` }}
+                style={{ width: `${grid.w_mm}mm`, height: `${grid.h_mm}mm`, breakInside: 'avoid', pageBreakInside: 'avoid' }}
               >
                 <img src={l.dataUrl} alt={l.code} style={{ width: `${grid.h_mm - 3}mm`, height: `${grid.h_mm - 3}mm` }} />
                 <div className="min-w-0 leading-tight">

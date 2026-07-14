@@ -10,12 +10,16 @@ export interface StockWithLocation { stock: Stock; location: Location }
 export interface SearchHit { part: Part; places: StockWithLocation[]; categoryName: string | null }
 
 /**
- * "Tükenmiş" satır: miktarlı bir parçanın adedi 0'a inmiş (taşınmış/tüketilmiş) ve
- * doluluk bilgisi yok. Konum ve parça listelerinde gizlenir — defterde kalır.
- * Doluluk (BİTTİ dâhil) ve takipsiz satırlar her zaman görünür.
+ * "Tükenmiş" satır — konum/parça listelerinde gizlenir (defterde kalır):
+ *  • Miktarlı: adet 0'a inmiş (taşınmış/tüketilmiş) ve doluluk bilgisi yok.
+ *  • Takipsiz: varlık işareti negatife inmiş (başka konuma taşınmış).
+ *    (0 = eski kayıtlar; görünür kalır. Yeni eklemeler +1 yazar.)
+ * Doluluk satırları (BİTTİ dâhil) her zaman görünür.
  */
 function isExhausted(part: Part, stock: Stock): boolean {
-  return part.count_mode === 'exact' && Number(stock.qty) <= 0 && stock.level == null
+  if (part.count_mode === 'exact') return Number(stock.qty) <= 0 && stock.level == null
+  if (part.count_mode === 'unmanaged') return Number(stock.qty) < 0
+  return false
 }
 
 export function useParts(): Part[] {
@@ -63,7 +67,7 @@ export function useLocationByCode(code: string | undefined): Location | undefine
   return useLiveQuery(async () => {
     if (!code) return null
     const loc = await db.locations.where('code').equalsIgnoreCase(code).first()
-    return loc ?? null
+    return loc && !loc.deleted_at ? loc : null
   }, [code])
 }
 

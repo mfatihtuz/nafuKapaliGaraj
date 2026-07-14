@@ -27,6 +27,22 @@ final class StockRepository
         return $row === null ? 0.0 : (float) $row['qty'];
     }
 
+    /**
+     * Sayım (audit) için kilitli okuma: satır, okuma→güncelleme arası KİLİTLİ kalır.
+     * Kilitsiz okumayla iki eşzamanlı sayım aynı delta'yı türetip düzeltmeyi çift uygular
+     * (10→7 sayımı iki cihazdan gelirse sonuç 7 değil 4 olurdu). SQLite'ta (test) FOR UPDATE
+     * yok ama dosya kilidi zaten yazmaları serileştirir.
+     */
+    public function getQtyForUpdate(string $partId, string $locationId): float
+    {
+        $sql = 'SELECT qty FROM stock WHERE tenant_id = :tid AND part_id = :pid AND location_id = :lid';
+        if ($this->db->isMysql()) {
+            $sql .= ' FOR UPDATE';
+        }
+        $row = $this->db->one($sql, ['tid' => $this->tenantId, 'pid' => $partId, 'lid' => $locationId]);
+        return $row === null ? 0.0 : (float) $row['qty'];
+    }
+
     /** exact mod: qty += delta (delta'lar toplanabilir — SYNC_PROTOCOL §1). */
     public function applyDelta(string $partId, string $locationId, float $delta, string $atMysql): void
     {

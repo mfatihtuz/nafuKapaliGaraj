@@ -121,7 +121,9 @@
     "add_to_existing": "Bu parça zaten var; bu konuma eklendi",
     "name_auto": "Ad (boş bırakırsanız otomatik oluşturulur)",
     "pick_category": "Önce bir kategori seçin",
-    "location_is_group": "{code} bir dolap/grup — parça içindeki bir çekmeceye (ör. {code}-1) eklenir."
+    "location_is_group": "{code} bir dolap/grup — parça içindeki bir çekmeceye (ör. {code}-1) eklenir.",
+    "mode_conflict": "{code} zaten \"{mode}\" sayım yöntemiyle kayıtlı — yöntemi parça detayından değiştirin.",
+    "group_other": "Diğer"
   },
   "labels": {
     "title": "Etiket Yazdır",
@@ -232,6 +234,10 @@
       "template_hint": "Aşağıdaki özelliklerden 'koda girer' işaretlediklerinden otomatik oluşur. İşareti kaldırınca çıkar, tekrar işaretlersen en sona eklenir.",
       "delete_confirm": "Bu kategori gizlensin mi?",
       "has_children": "Bu kategorinin alt kategorileri var — önce onları silin veya başka üst kategoriye taşıyın.",
+      "need_name_code": "Ad ve kod öneki gerekli",
+      "code_taken": "\"{code}\" kod öneki başka bir kategoride kullanılıyor — kodlar tekil olmalı.",
+      "dup_attr": "Aynı özellik anahtarı iki kez tanımlanmış — anahtarlar tekil olmalı.",
+      "cycle": "Bir kategori kendi alt kategorisine bağlanamaz.",
       "empty": "Henüz kategori yok"
     },
     "account_role": "Yetki",

@@ -125,16 +125,21 @@ export async function movePartStock(
 
   if (part.count_mode === 'exact') {
     const qty = Number(stock?.qty ?? 0)
+    // ref_id iki hareketi aynı transfere bağlar (izlenebilirlik + ileride atomik işleme).
+    const refId = uuidv7()
     if (qty !== 0) {
-      await moveStock({ partId: part.id, locationId: fromLocationId, delta: -qty, reason: 'transfer' })
+      await moveStock({ partId: part.id, locationId: fromLocationId, delta: -qty, reason: 'transfer', refId })
     }
-    await moveStock({ partId: part.id, locationId: toLocationId, delta: qty, reason: 'transfer' })
+    await moveStock({ partId: part.id, locationId: toLocationId, delta: qty, reason: 'transfer', refId })
   } else if (part.count_mode === 'level') {
     await setLevel(part.id, toLocationId, stock?.level ?? 'full')
     await setLevel(part.id, fromLocationId, 'empty')
   } else {
-    // takipsiz: yalnızca varlık
-    await moveStock({ partId: part.id, locationId: toLocationId, delta: 0, reason: 'transfer' })
+    // Takipsiz: varlık işareti taşınır — kaynak −1 ("artık burada değil"), hedef +1.
+    // qty < 0 olan takipsiz satırlar listelerde gizlenir (bkz. queries.isExhausted).
+    const refId = uuidv7()
+    await moveStock({ partId: part.id, locationId: fromLocationId, delta: -1, reason: 'transfer', refId })
+    await moveStock({ partId: part.id, locationId: toLocationId, delta: 1, reason: 'transfer', refId })
   }
 }
 

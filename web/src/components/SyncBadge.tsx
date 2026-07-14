@@ -26,6 +26,15 @@ export function SyncBadge() {
   if (s.authExpired) {
     return <span className="chip bg-red-100 text-red-700">{t('sync.auth_expired')}</span>
   }
+  // Son eşitleme hata verdiyse "Güncel" gösterme — sorun görünür olmalı.
+  if (s.lastError) {
+    return (
+      <span className="chip bg-red-100 text-red-700" title={s.lastError}>
+        <IconWifiOff size={14} /> {t('sync.error')}
+        {pending > 0 && ` · ${t('sync.pending', { n: pending })}`}
+      </span>
+    )
+  }
   if (pending > 0) {
     return (
       <span className="chip bg-amber-100 text-amber-800">

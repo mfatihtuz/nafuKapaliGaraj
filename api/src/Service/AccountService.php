@@ -12,7 +12,7 @@ final class AccountService
 {
     public function __construct(private readonly Db $db) {}
 
-    public function changePassword(string $userId, string $current, string $new): void
+    public function changePassword(string $userId, string $current, string $new, ?string $keepToken = null): void
     {
         if (mb_strlen($new) < 8) {
             throw HttpException::unprocessable('Yeni parola en az 8 karakter olmalı');
@@ -23,6 +23,15 @@ final class AccountService
         }
         $this->db->run('UPDATE users SET password_hash = :h WHERE id = :id',
             ['h' => password_hash($new, PASSWORD_ARGON2ID), 'id' => $userId]);
+
+        // Parola değişince bu kullanıcının DİĞER oturumları geçersiz kılınır
+        // (çalınan/eski oturum yeni parolayı bilmeden açık kalmasın). Mevcut oturum korunur.
+        if ($keepToken !== null && $keepToken !== '') {
+            $this->db->run('DELETE FROM sessions WHERE user_id = :u AND token <> :t',
+                ['u' => $userId, 't' => $keepToken]);
+        } else {
+            $this->db->run('DELETE FROM sessions WHERE user_id = :u', ['u' => $userId]);
+        }
     }
 
     /**
@@ -47,15 +56,25 @@ final class AccountService
 
         if (array_key_exists('email', $data)) {
             $email = mb_strtolower(trim((string) $data['email']));
-            if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                throw HttpException::unprocessable('Geçersiz e-posta');
+            if ($email === '') {
+                // Boş e-posta '' olarak YAZILMAZ (unique çakışması + girişte bulunamama).
+                // Silmek isteniyorsa NULL'a çevrilir; ama kullanıcı adı da yoksa hesap kilitlenir.
+                $me = $this->db->one('SELECT username FROM users WHERE id = :id', ['id' => $userId]);
+                if (($me['username'] ?? null) === null || $me['username'] === '') {
+                    throw HttpException::unprocessable('E-postayı silmek için önce bir kullanıcı adı belirleyin');
+                }
+                $fields[] = 'email = NULL';
+            } else {
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    throw HttpException::unprocessable('Geçersiz e-posta');
+                }
+                $taken = $this->db->one('SELECT id FROM users WHERE email = :e AND id <> :id', ['e' => $email, 'id' => $userId]);
+                if ($taken !== null) {
+                    throw HttpException::conflict('Bu e-posta başka bir hesapta kullanılıyor', 'email_taken');
+                }
+                $fields[] = 'email = :e';
+                $bind['e'] = $email;
             }
-            $taken = $this->db->one('SELECT id FROM users WHERE email = :e AND id <> :id', ['e' => $email, 'id' => $userId]);
-            if ($taken !== null) {
-                throw HttpException::conflict('Bu e-posta başka bir hesapta kullanılıyor', 'email_taken');
-            }
-            $fields[] = 'email = :e';
-            $bind['e'] = $email;
         }
 
         if (array_key_exists('username', $data)) {
