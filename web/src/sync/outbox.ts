@@ -132,7 +132,7 @@ async function pushChunk(ops: OutboxOp[], queue: OutboxOp[]): Promise<{ applied:
     // Üstel bekleme: her işlem/görünürlük değişiminde tetiklenen hızlı sync'ler
     // 8 denemeyi dakikalar içinde tüketmesin. Bir denemeyi ancak backoff süresi
     // geçtiyse "gerçek deneme" say; erken tekrarlar sayacı yakmaz.
-    const backoffMs = Math.min(60_000, 1000 * 2 ** op.attempts) // 1s,2s,…,60s
+    const backoffMs = Math.min(20_000, 1000 * 2 ** op.attempts) // 1s,2s,…,20s tavan
     const elapsed = now - (op.last_attempt_at ?? 0)
     const countsAsAttempt = elapsed >= backoffMs
     const attempts = countsAsAttempt ? op.attempts + 1 : op.attempts

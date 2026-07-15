@@ -32,6 +32,8 @@ class SyncEngine {
   private listeners = new Set<Listener>()
   private debounceTimer: ReturnType<typeof setTimeout> | null = null
   private intervalTimer: ReturnType<typeof setInterval> | null = null
+  private retryTimer: ReturnType<typeof setTimeout> | null = null // bekleyen işi hızlı boşalt
+  private drainRounds = 0
   private runQueued = false
   private started = false
 
@@ -79,11 +81,14 @@ class SyncEngine {
     this.intervalTimer = null
     if (this.debounceTimer) clearTimeout(this.debounceTimer)
     this.debounceTimer = null
+    if (this.retryTimer) clearTimeout(this.retryTimer)
+    this.retryTimer = null
     this.started = false
   }
 
   /** Outbox'a yazımdan sonra: 500 ms debounce ile sync tetikle. */
   schedule(): void {
+    this.drainRounds = 0 // yeni yazım → hızlı boşaltma temposunu sıfırla
     if (this.debounceTimer) clearTimeout(this.debounceTimer)
     this.debounceTimer = setTimeout(() => void this.sync(), 500)
   }
@@ -95,6 +100,7 @@ class SyncEngine {
       this.runQueued = true
       return
     }
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null }
     this.emit({ syncing: true, lastError: null })
     try {
       await this.ensureBootstrap()
@@ -115,8 +121,25 @@ class SyncEngine {
       if (this.runQueued) {
         this.runQueued = false
         void this.sync()
+      } else {
+        void this.scheduleDrainIfPending()
       }
     }
+  }
+
+  /**
+   * Push yarım kaldıysa (bir tık yavaşlık/kopukluk) bekleyen işleri 5 dakikalık
+   * otomatik tura bırakma; birkaç saniyede tekrar dene. Ard arda boşalamazsa
+   * gecikmeyi artır (4s→8s→16s→30s tavan) ki sunucuyu dövmesin. Boşalınca sıfırla.
+   */
+  private async scheduleDrainIfPending(): Promise<void> {
+    if (!this.status.online) { this.drainRounds = 0; return }
+    const pending = await pendingCount()
+    if (pending === 0) { this.drainRounds = 0; return }
+    const delay = Math.min(30_000, 4000 * 2 ** Math.min(this.drainRounds, 3))
+    this.drainRounds++
+    if (this.retryTimer) clearTimeout(this.retryTimer)
+    this.retryTimer = setTimeout(() => void this.sync(), delay)
   }
 
   private async ensureBootstrap(): Promise<void> {
