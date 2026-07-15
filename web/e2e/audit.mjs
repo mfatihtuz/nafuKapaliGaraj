@@ -879,6 +879,88 @@ await sect('Q-precise-count', { settings: { precise_count: true } }, async ({ pa
   check('Q5 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ R. CASCADE RENAME — GERÇEK YAPI (GARAJ sitesi altında düz dolap) ══════════
+// Kullanıcı senaryosu: S1 dolabı (GARAJ altında) + S1-01..03 çekmeceler. S1→SB105
+// yeniden adlandırıldığında alt çekmece KODLARI da SB105-01.. olmalı. L10 testi
+// parent_id=null kullanıyordu (GARAJ yok); bu test GERÇEK ebeveyni test eder.
+await sect('R-cascade-flat', {}, async ({ page, pageErrors }) => {
+  await page.evaluate(async () => {
+    const T = '2026-07-14T10:00:00.000Z'
+    const mk = (id, parent_id, code, type, path, sort) => ({ id, parent_id, code, name: type === 'cabinet' ? 'Sembol' : null, type, path, photo_id: null, capacity_note: null, sort_order: sort, updated_at: T, deleted_at: null })
+    const rows = [
+      mk('garaj', null, 'GARAJ', 'site', 'GARAJ', 0),
+      mk('rcab', 'garaj', 'S1', 'cabinet', 'GARAJ/S1', 1),
+      mk('rd1', 'rcab', 'S1-01', 'drawer', 'GARAJ/S1/S1-01', 2),
+      mk('rd2', 'rcab', 'S1-02', 'drawer', 'GARAJ/S1/S1-02', 3),
+      mk('rd3', 'rcab', 'S1-03', 'drawer', 'GARAJ/S1/S1-03', 4),
+    ]
+    await new Promise((res, rej) => {
+      const o = indexedDB.open('depo')
+      o.onsuccess = () => { const dbx = o.result; const tx = dbx.transaction('locations', 'readwrite'); rows.forEach((r) => tx.objectStore('locations').put(r)); tx.oncomplete = () => { dbx.close(); res() }; tx.onerror = () => rej(tx.error) }
+    })
+  })
+  await page.goto(BASE + 'settings', { waitUntil: 'networkidle' }); await page.waitForTimeout(300)
+  await page.getByRole('button', { name: 'Konumlar', exact: true }).click().catch(() => {}); await page.waitForTimeout(300)
+  // GARAJ'ı aç → S1 görünür
+  const garajRow = page.locator('.row').filter({ has: page.getByText('GARAJ', { exact: true }) }).first()
+  await garajRow.getByRole('button', { name: 'Aç / kapa' }).click().catch(() => {}); await page.waitForTimeout(250)
+  // S1 dolabını düzenle → SB105
+  const s1Row = page.locator('.row').filter({ has: page.getByText('S1', { exact: true }) }).first()
+  await s1Row.getByRole('button', { name: 'Düzenle' }).click(); await page.waitForTimeout(300)
+  await page.locator('.rounded-xl.border input.font-mono').fill('SB105')
+  await page.locator('.rounded-xl.border').getByRole('button', { name: 'Kaydet' }).click(); await page.waitForTimeout(800)
+  const locs = await dexie(page, 'locations')
+  const cab = locs.find((l) => l.id === 'rcab')
+  const d1 = locs.find((l) => l.id === 'rd1'), d2 = locs.find((l) => l.id === 'rd2'), d3 = locs.find((l) => l.id === 'rd3')
+  check('R1 dolap kodu SB105 + path GARAJ/SB105', cab?.code === 'SB105' && cab?.path === 'GARAJ/SB105', `code=${cab?.code} path=${cab?.path}`)
+  check('R2 alt çekmece KODLARI SB105-01..03 oldu', d1?.code === 'SB105-01' && d2?.code === 'SB105-02' && d3?.code === 'SB105-03', `${d1?.code},${d2?.code},${d3?.code}`)
+  check('R3 alt path GARAJ/SB105/SB105-01', d1?.path === 'GARAJ/SB105/SB105-01', `path=${d1?.path}`)
+  check('R4 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ R2. CASCADE ONARIM — bozuk veriyi düzelt (kabin SB105 ama çocuk S1-01) ════
+// Kullanıcının GERÇEK bozuk durumu: eski build kabini SB105 yaptı ama çocuklar
+// S1-01 kaldı (önek uyuşmuyor). Onarım: SB105→S1 (çocuklar S1-01 kalır, tutarlı)
+// sonra S1→SB105 (çocuklar SB105-01 olur). Bu iki adımı DOĞRULAR.
+await sect('R2-cascade-recovery', {}, async ({ page, pageErrors }) => {
+  await page.evaluate(async () => {
+    const T = '2026-07-14T10:00:00.000Z'
+    const mk = (id, parent_id, code, type, path, sort) => ({ id, parent_id, code, name: type === 'cabinet' ? 'Sembol' : null, type, path, photo_id: null, capacity_note: null, sort_order: sort, updated_at: T, deleted_at: null })
+    const rows = [
+      mk('garaj', null, 'GARAJ', 'site', 'GARAJ', 0),
+      // BOZUK: kabin SB105, çocuklar hâlâ S1-01.. (path kabin segmenti güncellenmiş)
+      mk('bcab', 'garaj', 'SB105', 'cabinet', 'GARAJ/SB105', 1),
+      mk('bd1', 'bcab', 'S1-01', 'drawer', 'GARAJ/SB105/S1-01', 2),
+      mk('bd2', 'bcab', 'S1-02', 'drawer', 'GARAJ/SB105/S1-02', 3),
+    ]
+    await new Promise((res, rej) => {
+      const o = indexedDB.open('depo')
+      o.onsuccess = () => { const dbx = o.result; const tx = dbx.transaction('locations', 'readwrite'); rows.forEach((r) => tx.objectStore('locations').put(r)); tx.oncomplete = () => { dbx.close(); res() }; tx.onerror = () => rej(tx.error) }
+    })
+  })
+  await page.goto(BASE + 'settings', { waitUntil: 'networkidle' }); await page.waitForTimeout(300)
+  await page.getByRole('button', { name: 'Konumlar', exact: true }).click().catch(() => {}); await page.waitForTimeout(300)
+  await page.locator('.row').filter({ has: page.getByText('GARAJ', { exact: true }) }).first()
+    .getByRole('button', { name: 'Aç / kapa' }).click().catch(() => {}); await page.waitForTimeout(250)
+
+  const editTo = async (fromCode, toCode) => {
+    await page.locator('.row').filter({ has: page.getByText(fromCode, { exact: true }) }).first()
+      .getByRole('button', { name: 'Düzenle' }).click(); await page.waitForTimeout(300)
+    await page.locator('.rounded-xl.border input.font-mono').fill(toCode)
+    await page.locator('.rounded-xl.border').getByRole('button', { name: 'Kaydet' }).click(); await page.waitForTimeout(800)
+  }
+  // Adım 1: SB105 → S1 (çocuk kodları değişmez, önek tutarlı hâle gelir)
+  await editTo('SB105', 'S1')
+  let locs = await dexie(page, 'locations')
+  check('R2.1 SB105→S1: çocuklar S1-01 kaldı, path GARAJ/S1/S1-01', locs.find((l) => l.id === 'bd1')?.code === 'S1-01' && locs.find((l) => l.id === 'bd1')?.path === 'GARAJ/S1/S1-01', `${locs.find((l) => l.id === 'bd1')?.code} / ${locs.find((l) => l.id === 'bd1')?.path}`)
+  // Adım 2: S1 → SB105 (çocuklar artık cascade ile SB105-01 olur)
+  await editTo('S1', 'SB105')
+  locs = await dexie(page, 'locations')
+  const bd1 = locs.find((l) => l.id === 'bd1'), bd2 = locs.find((l) => l.id === 'bd2')
+  check('R2.2 onarım tamam: çocuk KODLARI SB105-01/02, path GARAJ/SB105/SB105-01', bd1?.code === 'SB105-01' && bd2?.code === 'SB105-02' && bd1?.path === 'GARAJ/SB105/SB105-01', `${bd1?.code},${bd2?.code} / ${bd1?.path}`)
+  check('R2.3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ---------------------------------------------------------------------------
 await browser.close()
 const fails = results.filter((r) => !r.ok)
