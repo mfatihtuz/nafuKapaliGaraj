@@ -961,6 +961,41 @@ await sect('R2-cascade-recovery', {}, async ({ page, pageErrors }) => {
   check('R2.3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ R3. CASCADE — ÖNEK UYUŞMAYAN çocukları TEK ADIMDA yeni koda çevir ════════
+// Kullanıcının tam senaryosu: dolap SB1055, çocuklar hâlâ S1-01 (eski önek).
+// SB1055→SB105 yapınca çocuklar TEK adımda SB105-01 olmalı (iki adım gerekmeden).
+await sect('R3-cascade-mismatch', {}, async ({ page, pageErrors }) => {
+  await page.evaluate(async () => {
+    const T = '2026-07-14T10:00:00.000Z'
+    const mk = (id, parent_id, code, type, path, sort) => ({ id, parent_id, code, name: type === 'cabinet' ? 'Sembol' : null, type, path, photo_id: null, capacity_note: null, sort_order: sort, updated_at: T, deleted_at: null })
+    const rows = [
+      mk('garaj', null, 'GARAJ', 'site', 'GARAJ', 0),
+      mk('mcab', 'garaj', 'SB1055', 'cabinet', 'GARAJ/SB1055', 1), // dolap SB1055
+      mk('md1', 'mcab', 'S1-01', 'drawer', 'GARAJ/SB1055/S1-01', 2), // çocuklar hâlâ S1-01 (önek uyuşmuyor)
+      mk('md2', 'mcab', 'S1-02', 'drawer', 'GARAJ/SB1055/S1-02', 3),
+      mk('md3', 'mcab', 'S1-70', 'drawer', 'GARAJ/SB1055/S1-70', 4),
+    ]
+    await new Promise((res, rej) => {
+      const o = indexedDB.open('depo')
+      o.onsuccess = () => { const dbx = o.result; const tx = dbx.transaction('locations', 'readwrite'); rows.forEach((r) => tx.objectStore('locations').put(r)); tx.oncomplete = () => { dbx.close(); res() }; tx.onerror = () => rej(tx.error) }
+    })
+  })
+  await page.goto(BASE + 'settings', { waitUntil: 'networkidle' }); await page.waitForTimeout(300)
+  await page.getByRole('button', { name: 'Konumlar', exact: true }).click().catch(() => {}); await page.waitForTimeout(300)
+  await page.locator('.row').filter({ has: page.getByText('GARAJ', { exact: true }) }).first()
+    .getByRole('button', { name: 'Aç / kapa' }).click().catch(() => {}); await page.waitForTimeout(250)
+  // SB1055 → SB105 (TEK adım)
+  await page.locator('.row').filter({ has: page.getByText('SB1055', { exact: true }) }).first()
+    .getByRole('button', { name: 'Düzenle' }).click(); await page.waitForTimeout(300)
+  await page.locator('.rounded-xl.border input.font-mono').fill('SB105')
+  await page.locator('.rounded-xl.border').getByRole('button', { name: 'Kaydet' }).click(); await page.waitForTimeout(800)
+  const locs = await dexie(page, 'locations')
+  const md1 = locs.find((l) => l.id === 'md1'), md2 = locs.find((l) => l.id === 'md2'), md3 = locs.find((l) => l.id === 'md3')
+  check('R3.1 önek uyuşmayan çocuklar TEK adımda SB105-01/02/70 oldu', md1?.code === 'SB105-01' && md2?.code === 'SB105-02' && md3?.code === 'SB105-70', `${md1?.code},${md2?.code},${md3?.code}`)
+  check('R3.2 alt path GARAJ/SB105/SB105-01', md1?.path === 'GARAJ/SB105/SB105-01', `path=${md1?.path}`)
+  check('R3.3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ---------------------------------------------------------------------------
 await browser.close()
 const fails = results.filter((r) => !r.ok)

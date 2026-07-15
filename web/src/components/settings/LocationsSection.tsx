@@ -68,16 +68,28 @@ export function LocationsSection({ canWrite }: { canWrite: boolean }) {
 
   /**
    * Bir konum düzenlenince alt ağacın KOD ve YOL'unu yeniden hesaplar.
-   *  • Kod öneki değişirse (S1 → SB105) çocuk kodları da güncellenir:
-   *    S1-01 → SB105-01, S1-01-1 → SB105-01-1 (önek eşleşen kısmı değişir).
-   *  • Önek dışı kodlu çocuklar korunur; yalnızca yol'ları güncellenir.
+   * Kural: bir çocuğun kodu DAİMA "<üst-kod>-<sıra>" biçimindedir; üst yeniden
+   * adlandırılınca çocuklar da yeni koda göre numaralanır — SIRAYI (son ek) koru,
+   * ÖNEKİ değiştir:
+   *   • Normal: çocuk kodu eski önekle başlıyorsa öneki değiştir
+   *     (S1-01 → SB105-01, S1-01-1 → SB105-01-1).
+   *   • Önek UYUŞMAZSA (eski/bozuk yeniden-adlandırmadan kalan çocuklar; ör. dolap
+   *     SB1055 ama çocuklar hâlâ S1-01): yine de ilk "-"ye kadarki öneki yeni kodla
+   *     değiştir → S1-01 → SB105-01. (Kullanıcı beklentisi budur.)
+   *   • Kodda "-" yoksa (alt dolap gibi) yalnızca yol güncellenir, kod korunur.
    * Her düğüm için {id, code, path} planı döner (önce çakışma kontrolü, sonra kayıt).
    */
   function planSubtree(rootId: string, oldPrefix: string, newPrefix: string, parentPath: string) {
     const out: { id: string; code: string; path: string }[] = []
     const walk = (parentId: string, oldP: string, newP: string, pPath: string) => {
       for (const child of childrenOf(parentId)) {
-        const cCode = child.code.startsWith(`${oldP}-`) ? newP + child.code.slice(oldP.length) : child.code
+        let cCode: string
+        if (child.code.startsWith(`${oldP}-`)) {
+          cCode = newP + child.code.slice(oldP.length) // önek eşleşiyor → düz değişim
+        } else {
+          const dash = child.code.indexOf('-')
+          cCode = dash > 0 ? newP + child.code.slice(dash) : child.code // önek uyuşmuyor → yine de yeni kodu uygula
+        }
         const cPath = `${pPath}/${cCode}`
         out.push({ id: child.id, code: cCode, path: cPath })
         walk(child.id, child.code, cCode, cPath)
