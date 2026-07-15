@@ -21,13 +21,17 @@ final class Schema
             self::$usernameChecked = true;
             return;
         }
-        $col = $db->one(
-            "SELECT COUNT(*) AS c FROM information_schema.COLUMNS
-              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'username'"
-        );
-        if ((int) ($col['c'] ?? 0) === 0) {
-            $db->run('ALTER TABLE users ADD COLUMN username VARCHAR(60) NULL AFTER email');
-            $db->run('ALTER TABLE users ADD UNIQUE KEY uq_users_username (username)');
+        // UCUZ kontrol: tablo tanımını kullanan bir SELECT — kolon yoksa fırlatır.
+        // (Eski kod her login'de information_schema.COLUMNS sorguluyordu; paylaşımlı
+        //  MySQL'de bu saniyeler sürebiliyor ve kolon eksikken üst üste denemeler
+        //  ALTER'da metadata-lock ile kilitlenip login'i 20 sn takıyordu.)
+        try {
+            $db->one('SELECT username FROM users LIMIT 1');
+        } catch (\Throwable) {
+            // Kolon yok → bir kez ekle. Unique key ayrı denemede (kolon eklenip key
+            // kalırsa ikinci login yine denemesin diye hata yutulur).
+            try { $db->run('ALTER TABLE users ADD COLUMN username VARCHAR(60) NULL AFTER email'); } catch (\Throwable) {}
+            try { $db->run('ALTER TABLE users ADD UNIQUE KEY uq_users_username (username)'); } catch (\Throwable) {}
         }
         self::$usernameChecked = true;
     }
