@@ -124,7 +124,7 @@ CREATE TABLE locations (
   id          CHAR(36)     NOT NULL PRIMARY KEY,
   tenant_id   CHAR(36)     NOT NULL,
   parent_id   CHAR(36)     NULL,
-  code        VARCHAR(32)  NOT NULL,      -- 'S1-07', 'A2-31', 'W1', 'LOAN-AHMET'
+  code        VARCHAR(32)  NOT NULL,      -- 'S1-07', 'A2-31', 'TZGH', 'LOAN-AHMET'
   name        VARCHAR(120) NULL,          -- 'Sembol 105 raf, göz 7'
   type        ENUM('site','cabinet','shelf','drawer','bin','bench','intake','quarantine','loan','project')
               NOT NULL DEFAULT 'drawer',

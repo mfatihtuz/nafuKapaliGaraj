@@ -313,9 +313,9 @@ INSERT INTO locations (id, tenant_id, parent_id, code, name, type, path, sort_or
   ('f7d3e2e6-98f8-4c31-bead-d94b877b5764', @tenant, '10b2f1a0-4204-498e-8431-9174d3f278ab', 'C1-07', NULL, 'drawer', 'GARAJ/C1/C1-07', 7),
   ('0d455cf5-9a6d-4b24-a8a2-d15362a611be', @tenant, '10b2f1a0-4204-498e-8431-9174d3f278ab', 'C1-08', NULL, 'drawer', 'GARAJ/C1/C1-08', 8),
   ('96446680-0db2-4efc-9495-9273aa559379', @tenant, '10b2f1a0-4204-498e-8431-9174d3f278ab', 'C1-09', NULL, 'drawer', 'GARAJ/C1/C1-09', 9),
-  ('05fd086e-cf47-4ac1-bf84-f00b07ffcd8e', @tenant, '0b821248-1755-4a77-ad0b-55df84723ea3', 'IN', 'Giriş Kutusu — kayıt bekleyen parçalar', 'intake', 'GARAJ/IN', 900),
-  ('0be0fa14-8134-43bf-9295-26507b2b9899', @tenant, '0b821248-1755-4a77-ad0b-55df84723ea3', 'W1', 'Tezgâh — projede kullanımda', 'bench', 'GARAJ/W1', 901),
-  ('4ea9c9bb-b823-468e-975f-4b15646a1650', @tenant, '0b821248-1755-4a77-ad0b-55df84723ea3', 'QT', 'Karantina — 12 ay kuralı', 'quarantine', 'GARAJ/QT', 902);
+  ('05fd086e-cf47-4ac1-bf84-f00b07ffcd8e', @tenant, '0b821248-1755-4a77-ad0b-55df84723ea3', 'GRS', 'Giriş Kutusu — kayıt bekleyen parçalar', 'intake', 'GARAJ/GRS', 900),
+  ('0be0fa14-8134-43bf-9295-26507b2b9899', @tenant, '0b821248-1755-4a77-ad0b-55df84723ea3', 'TZGH', 'Tezgâh — projede kullanımda', 'bench', 'GARAJ/TZGH', 901),
+  ('4ea9c9bb-b823-468e-975f-4b15646a1650', @tenant, '0b821248-1755-4a77-ad0b-55df84723ea3', 'KRNT', 'Karantina — 12 ay kuralı', 'quarantine', 'GARAJ/KRNT', 902);
 
 -- Toplam konum kaydı: 240  |  Fiziksel göz (drawer): 217
 

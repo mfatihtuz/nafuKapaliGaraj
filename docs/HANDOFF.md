@@ -26,7 +26,10 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 - **B7 — Toplu üretim atomik:** `saveLocationsBulk` — konumlar+outbox tek Dexie transaction.
 - **B8 — i18n:** LEVEL/REASON/timeAgo/units sözlüğe taşındı (`levelLabel/reasonLabel/unitLabel`).
 - **B9 — Boş-durum:** etikette dolap yoksa yönlendirme; index.php config-yok → 503 + eylem mesajı.
-- Raporlar güncellendi: `ACTION_REPORT.md §A.4` (B-özeti) + `§A.5` (W1/QT/IN açıklaması),
+- **Sistem konum kodları yeniden adlandırıldı:** IN→GRS, W1→TZGH, QT→KRNT (ASCII;
+  kod kuralı §5). `db/seed.sql` (fresh) + `db/migrations/004_rename_system_locations.sql`
+  (mevcut DB; sonra cihazda çıkış/giriş → re-bootstrap).
+- Raporlar güncellendi: `ACTION_REPORT.md §A.4` (B-özeti) + `§A.5` (GRS/TZGH/KRNT açıklaması),
   `AUDIT_REPORT.md §4/§7`.
 
 **Bilinen sorunlar / backlog:** Yalnızca ürün fazları kaldı (FAZ 2+): AI ile fotoğraftan

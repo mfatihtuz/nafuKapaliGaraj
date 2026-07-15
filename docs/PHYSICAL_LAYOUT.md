@@ -12,9 +12,9 @@ GARAJ (site)
 ├── B1  3D B Tipi — dar hazne (elektronik)     →  B1-01 … B1-40          (40 göz)
 ├── C1  Kule — hobi çekmecesi                  →  C1-01 … C1-09          ( 9 göz)
 │                                                              TOPLAM: 217 göz
-├── IN  Giriş kutusu   (sistem konumu)
-├── W1  Tezgâh         (sistem konumu)
-└── QT  Karantina      (sistem konumu)
+├── GRS   Giriş kutusu   (sistem konumu)
+├── TZGH  Tezgâh         (sistem konumu)
+└── KRNT  Karantina      (sistem konumu)
 ```
 
 ### Değişmez kurallar
@@ -28,9 +28,9 @@ GARAJ (site)
 
 | Kod | Kural |
 |---|---|
-| `IN` | Kargo geldi → kutu buraya. **Sisteme girilmeden çekmeceye gitmez.** Tek istisna yok. |
-| `W1` | Tezgâha çektiğin her parça buraya *transfer* edilir. Böylece "nerede?" sorusunun cevabı hep doğru olur. Proje bitince tezgâhı boşalt. |
-| `QT` | "Belki lazım olur" kutusu. 12 ay dokunulmazsa → at. Aramada varsayılan olarak **gizli** olsun (gürültü yapmasın), filtreyle görünsün. |
+| `GRS` | Kargo geldi → kutu buraya. **Sisteme girilmeden çekmeceye gitmez.** Tek istisna yok. |
+| `TZGH` | Tezgâha çektiğin her parça buraya *transfer* edilir. Böylece "nerede?" sorusunun cevabı hep doğru olur. Proje bitince tezgâhı boşalt. |
+| `KRNT` | "Belki lazım olur" kutusu. 12 ay dokunulmazsa → at. Aramada varsayılan olarak **gizli** olsun (gürültü yapmasın), filtreyle görünsün. |
 | `LOAN-*` | Ödünç verdiğinde otomatik oluşur (`LOAN-AHMET`). Parça kaybolmaz, sadece konum değiştirir. |
 
 ---
@@ -145,7 +145,7 @@ Vidalarla başlarsan üçüncü sprintte bırakırsın.
 
 | Sıklık | Süre | İş |
 |---|---|---|
-| Her proje sonu | 10 dk | `W1` tezgâhını boşalt, parçaları yerine koy, tüketimi işle |
+| Her proje sonu | 10 dk | `TZGH` tezgâhını boşalt, parçaları yerine koy, tüketimi işle |
 | Haftalık | 10 dk | Eksikler listesine bak → sipariş listesi hazırla |
 | Aylık | 20 dk | **Döngüsel sayım:** rastgele 1 kabin, tam sayım, `audit` hareketi olarak işle. Doğruluk oranını kaydet. |
 | 6 aylık | 1 sa | **Ölü stok raporu:** 12 aydır hareketsiz parçalar → AT / KARANTİNA kararı |

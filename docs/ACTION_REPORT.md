@@ -87,17 +87,19 @@ Etiket sayfasında hiç dolap yoksa artık boş bir liste yerine **"Önce Ayarla
 
 ---
 
-## A.5 — Sistem Konumları: W1 / QT / IN nedir, nerede kullanılır?
+## A.5 — Sistem Konumları: TZGH / KRNT / GRS nedir, nerede kullanılır?
 
 Bu üçü, kurulumla gelen **sistem konumlarıdır** (`GARAJ` alanının altında). Normal dolaplardan farkları: **düzenlenemez/silinemezler** (Ayarlar → Konumlar'da salt-okunur görünürler) ve fiziksel bir çekmece değil, bir **iş akışı durağıdır.**
 
+> **Kod güncellemesi (14 Tem 2026):** Bu üç konumun kodları anlaşılır kısaltmalara çevrildi: **IN → GRS**, **W1 → TZGH**, **QT → KRNT**. (Konum kodları teknik koddur ve QR/URL'de kullanılır; Türkçe karakter giremez — bu yüzden `GRŞ` yerine ASCII `GRS`.) Mevcut kurulumlarda güncellemek için: `db/migrations/004_rename_system_locations.sql` çalıştırın, sonra her cihazda **Çıkış → tekrar Giriş** yapın.
+
 | Kod | Tip | Adı | Ne işe yarar |
 |---|---|---|---|
-| **IN** | `intake` (Giriş) | *Giriş Kutusu — kayıt bekleyen parçalar* | Yeni gelen ama henüz kalıcı gözüne yerleştirilmemiş parçalar için **geçici giriş rafı.** "Parti hâlinde parça geldi, tek tek yerleştirmeye vaktim yok; şimdilik sisteme al, sonra dağıtırım" durağı. Parçayı buraya alır, sonra **Taşı** ile gerçek çekmecesine gönderirsiniz. |
-| **W1** | `bench` (Tezgâh) | *Tezgâh — projede kullanımda* | Bir projede **kullanımda / elinizin altında** olan parçalar. Çekmeceden çıkarıp tezgâha aldığınızda parçayı W1'e **taşırsınız**; böylece "çekmecede yok ama kayıp da değil, tezgâhta" bilgisi korunur. Proje bitince geri kaldıysa asıl gözüne taşırsınız. |
-| **QT** | `quarantine` (Karantina) | *Karantina — 12 ay kuralı* | Emin olmadığınız parçalar (söküm/hurdadan çıkan, sağlamlığı şüpheli, "atsam mı sakla mı" dediğiniz) için **bekleme alanı.** Mantık: 12 ay burada durur, o süre içinde kullanmadıysanız gönül rahatlığıyla atarsınız. **Aramada varsayılan olarak GİZLİDİR** — normal envanterinizi kirletmez; "Karantinadakileri de göster" kutusuyla görünür. |
+| **GRS** | `intake` (Giriş) | *Giriş Kutusu — kayıt bekleyen parçalar* | Yeni gelen ama henüz kalıcı gözüne yerleştirilmemiş parçalar için **geçici giriş rafı.** "Parti hâlinde parça geldi, tek tek yerleştirmeye vaktim yok; şimdilik sisteme al, sonra dağıtırım" durağı. Parçayı buraya alır, sonra **Taşı** ile gerçek çekmecesine gönderirsiniz. |
+| **TZGH** | `bench` (Tezgâh) | *Tezgâh — projede kullanımda* | Bir projede **kullanımda / elinizin altında** olan parçalar. Çekmeceden çıkarıp tezgâha aldığınızda parçayı TZGH'ye **taşırsınız**; böylece "çekmecede yok ama kayıp da değil, tezgâhta" bilgisi korunur. Proje bitince geri kaldıysa asıl gözüne taşırsınız. |
+| **KRNT** | `quarantine` (Karantina) | *Karantina — 12 ay kuralı* | Emin olmadığınız parçalar (söküm/hurdadan çıkan, sağlamlığı şüpheli, "atsam mı sakla mı" dediğiniz) için **bekleme alanı.** Mantık: 12 ay burada durur, o süre içinde kullanmadıysanız gönül rahatlığıyla atarsınız. **Aramada varsayılan olarak GİZLİDİR** — normal envanterinizi kirletmez; "Karantinadakileri de göster" kutusuyla görünür. |
 
-**Kısaca akış:** yeni parça → **IN** (giriş) → asıl çekmece; kullanınca → **W1** (tezgâh) → iş bitince geri; şüpheli/emekli → **QT** (karantina) → 12 ay sonra çöp. Üçü de birer konum olduğu için stok hareketleri (taşıma) bu duraklar arasında kayıpsız izlenir.
+**Kısaca akış:** yeni parça → **GRS** (giriş) → asıl çekmece; kullanınca → **TZGH** (tezgâh) → iş bitince geri; şüpheli/emekli → **KRNT** (karantina) → 12 ay sonra çöp. Üçü de birer konum olduğu için stok hareketleri (taşıma) bu duraklar arasında kayıpsız izlenir.
 
 ---
 
