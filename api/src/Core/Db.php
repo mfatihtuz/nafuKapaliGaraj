@@ -69,6 +69,15 @@ final class Db
     public function commit(): void { if ($this->pdo->inTransaction()) $this->pdo->commit(); }
     public function rollback(): void { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); }
 
+    /**
+     * Tek dış transaction içinde op-başına izolasyon (SAVEPOINT). İsim SABİT literal —
+     * SAVEPOINT bind parametre almaz; sabit ad kullanıldığından injection yok. Aynı adı
+     * her turda yeniden SAVEPOINT'lemek eskisini değiştirir (liste 1'de kalır, RELEASE şart değil).
+     * Kullanım: begin() → her op: savepoint(); dene; hata → rollbackToSavepoint(); en son commit().
+     */
+    public function savepoint(): void { $this->pdo->exec('SAVEPOINT op'); }
+    public function rollbackToSavepoint(): void { $this->pdo->exec('ROLLBACK TO SAVEPOINT op'); }
+
     /** @template T @param callable():T $fn @return T */
     public function transaction(callable $fn): mixed
     {

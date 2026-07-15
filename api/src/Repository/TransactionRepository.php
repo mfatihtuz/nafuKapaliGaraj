@@ -75,13 +75,19 @@ final class TransactionRepository
         ) ?? [];
     }
 
-    /** Bootstrap: son N gün + açılış (initial) hareketleri. @return list<array<string,mixed>> */
+    /**
+     * Bootstrap: yalnızca son N günlük hareketler. @return list<array<string,mixed>>
+     * NOT: Eskiden "OR reason='initial'" ile TÜM açılış hareketleri (yaşına bakılmaksızın)
+     * gönderiliyordu → bootstrap payload'ı sınırsız büyüyordu. Snapshot zaten güncel
+     * qty/level taşıdığından (stok ondan yazılır, applyBootstrap) doğruluk bozulmaz;
+     * eski geçmiş gerekirse parça detayında istek üzerine çekilir.
+     */
     public function recentForBootstrap(int $sinceDays = 90): array
     {
         $cutoff = (new \DateTimeImmutable("-{$sinceDays} days", new \DateTimeZone('UTC')))->format('Y-m-d H:i:s.v');
         return $this->db->all(
             "SELECT * FROM stock_transactions
-              WHERE tenant_id = :tid AND (created_at >= :cutoff OR reason = 'initial')
+              WHERE tenant_id = :tid AND created_at >= :cutoff
               ORDER BY created_at ASC",
             ['tid' => $this->tenantId, 'cutoff' => $cutoff]
         );

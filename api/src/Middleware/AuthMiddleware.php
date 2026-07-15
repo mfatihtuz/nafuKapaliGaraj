@@ -41,7 +41,8 @@ final class AuthMiddleware
             throw HttpException::unauthorized('Oturum geçersiz');
         }
         if (strtotime((string) $row['expires_at']) < time()) {
-            $this->db->run('DELETE FROM sessions WHERE token = :token', ['token' => $token]);
+            // DB'de HASH saklı — silme de hash ile olmalı (ham token hiç eşleşmezdi).
+            $this->db->run('DELETE FROM sessions WHERE token = :token', ['token' => $hashed]);
             throw HttpException::unauthorized('Oturum süresi doldu');
         }
 

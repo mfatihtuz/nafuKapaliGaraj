@@ -22,7 +22,7 @@ final class AccountService
             throw HttpException::unauthorized('Mevcut parola hatalı');
         }
         $this->db->run('UPDATE users SET password_hash = :h WHERE id = :id',
-            ['h' => password_hash($new, PASSWORD_ARGON2ID), 'id' => $userId]);
+            ['h' => \Depo\Support\Password::hash($new), 'id' => $userId]);
 
         // Parola değişince bu kullanıcının DİĞER oturumları geçersiz kılınır
         // (çalınan/eski oturum yeni parolayı bilmeden açık kalmasın). Mevcut oturum korunur.

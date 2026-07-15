@@ -105,8 +105,10 @@ class SyncEngine {
     try {
       await this.ensureBootstrap()
       await this.pullAll() // pull
-      await pushOutbox() //   push
-      await this.pullAll() // pull (push sonrası kendi değişikliklerimizi de al)
+      const pushed = await this.pushWithLock() // push (sekmeler-arası tek push)
+      // 2. pull YALNIZCA sunucu bir şey uyguladıysa (kendi yazdıklarımızı geri çek).
+      // Boşta/başarısız push'ta bu turu atla → gereksiz ağ turu yok (istek sayısı yarıya iner).
+      if (pushed.applied > 0) await this.pullAll()
       await this.verifyChecksum() // self-heal: sessiz stok kaymasını yakala
       this.emit({ lastSyncAt: Date.now(), lastError: null, authExpired: false })
     } catch (err) {
@@ -147,6 +149,24 @@ class SyncEngine {
     if (done) return
     const result = await api.bootstrap()
     await applyBootstrap(result)
+  }
+
+  /**
+   * Outbox push'u sekmeler-arası TEK bağlama indirger (Web Locks, ifAvailable).
+   * Aynı origin'de birden çok sekme/PWA aynı IndexedDB outbox'unu paylaşır; hepsi
+   * aynı anda push edince sunucu GET_LOCK'unda yarışıp 429 kaskadı olurdu. Kilidi
+   * kapan push eder; kapamayan atlar (op'lar paylaşılan outbox'ta kalır, kayıp yok).
+   * navigator.locks yoksa (eski iOS Safari / güvensiz bağlam) bugünkü davranış — regresyon yok.
+   */
+  private async pushWithLock(): Promise<{ applied: number; rejected: number; sent: number }> {
+    const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined
+    if (!locks?.request) return pushOutbox()
+    let result = { applied: 0, rejected: 0, sent: 0 }
+    await locks.request('depo-outbox-push', { ifAvailable: true }, async (lock) => {
+      if (!lock) return // başka sekme zaten boşaltıyor → atla
+      result = await pushOutbox()
+    })
+    return result
   }
 
   private async pullAll(): Promise<void> {

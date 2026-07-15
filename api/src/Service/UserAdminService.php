@@ -82,7 +82,7 @@ final class UserAdminService
                 'INSERT INTO users (id, email, username, password_hash, display_name)
                  VALUES (:id, :e, :u, :h, :n)',
                 ['id' => $userId, 'e' => $email ?? ($userId . '@local.invalid'), 'u' => $username,
-                 'h' => password_hash($password, PASSWORD_ARGON2ID), 'n' => $displayName]
+                 'h' => \Depo\Support\Password::hash($password), 'n' => $displayName]
             );
             $this->db->run(
                 'INSERT INTO tenant_users (tenant_id, user_id, role) VALUES (:t, :u, :r)',
@@ -128,7 +128,7 @@ final class UserAdminService
             throw HttpException::notFound('Kullanıcı bu organizasyonda değil');
         }
         $this->db->run('UPDATE users SET password_hash = :h WHERE id = :id',
-            ['h' => password_hash($newPassword, PASSWORD_ARGON2ID), 'id' => $userId]);
+            ['h' => \Depo\Support\Password::hash($newPassword), 'id' => $userId]);
         // Eski oturumlar geçersiz (kullanıcı yeni parolayla tekrar girmeli).
         $this->db->run('DELETE FROM sessions WHERE user_id = :u', ['u' => $userId]);
     }

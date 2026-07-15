@@ -153,7 +153,10 @@ final class SyncService
         $lockName = null;
         if ($this->db->isMysql()) {
             $lockName = 'depo:push:' . $this->tenantId;
-            $got = $this->db->one('SELECT GET_LOCK(:n, 10) AS l', ['n' => $lockName]);
+            // Kilit beklemesi KISA (2sn): kaybeden worker'ı 10sn boyunca tutup php-fpm
+            // havuzunu tüketmesin (çok sekme/cihazda 20sn zaman aşımının kaynağıydı).
+            // Kaybeden hızlı 429 alır; istemci outbox üstel-backoff ile sonra dener.
+            $got = $this->db->one('SELECT GET_LOCK(:n, 2) AS l', ['n' => $lockName]);
             if ((int) ($got['l'] ?? 0) !== 1) {
                 throw HttpException::tooManyRequests('Eşzamanlı senkronizasyon — biraz sonra tekrar deneyin');
             }
@@ -175,29 +178,44 @@ final class SyncService
      */
     private function pushLocked(array $ops, array $applied, array $rejected): array
     {
-        foreach ($ops as $op) {
-            $opId = is_string($op['op_id'] ?? null) ? $op['op_id'] : '';
-            if (!Uuid::isV7($opId)) {
-                $rejected[] = ['op_id' => $opId, 'reason' => 'invalid_op_id', 'message' => 'op_id UUIDv7 değil'];
-                continue;
-            }
+        // TÜM batch tek dış transaction'da → op başına 1 COMMIT/fsync yerine 1 fsync
+        // (70 op'luk cascade eskiden ~70 fsync = saniyeler; artık ~1). Op-başına
+        // izolasyon SAVEPOINT ile: bir op reddedilince yalnız o geri alınır, kalanlar sürer.
+        $this->db->begin();
+        try {
+            foreach ($ops as $op) {
+                $opId = is_string($op['op_id'] ?? null) ? $op['op_id'] : '';
+                if (!Uuid::isV7($opId)) {
+                    $rejected[] = ['op_id' => $opId, 'reason' => 'invalid_op_id', 'message' => 'op_id UUIDv7 değil'];
+                    continue;
+                }
 
-            try {
-                // Her op kendi transaction'ında: effect + change_log + sync_ops atomik.
-                $this->db->transaction(function () use ($opId, $op): void {
+                $this->db->savepoint();
+                try {
                     $this->applyOp($opId, $op);
-                });
-                $applied[] = $opId;
-            } catch (HttpException $e) {
-                $rejected[] = ['op_id' => $opId, 'reason' => $e->getErrorCode(), 'message' => $e->getMessage()];
-            } catch (\PDOException $e) {
-                // op_id yarışı (PK ihlali) → zaten uygulanmış kabul et (idempotent).
-                if ($this->syncOps->exists($opId)) {
                     $applied[] = $opId;
-                } else {
-                    $rejected[] = ['op_id' => $opId, 'reason' => 'db_error', 'message' => 'Veritabanı hatası'];
+                } catch (HttpException $e) {
+                    $this->db->rollbackToSavepoint(); // yalnız bu op geri, batch sürer
+                    $rejected[] = ['op_id' => $opId, 'reason' => $e->getErrorCode(), 'message' => $e->getMessage()];
+                } catch (\PDOException $e) {
+                    // Savepoint'e dönülemiyorsa (ör. deadlock ile tüm tx iptal) batch'i iptal et.
+                    try {
+                        $this->db->rollbackToSavepoint();
+                    } catch (\PDOException) {
+                        throw $e;
+                    }
+                    // op_id yarışı (PK ihlali) → zaten uygulanmış kabul et (idempotent).
+                    if ($this->syncOps->exists($opId)) {
+                        $applied[] = $opId;
+                    } else {
+                        $rejected[] = ['op_id' => $opId, 'reason' => 'db_error', 'message' => 'Veritabanı hatası'];
+                    }
                 }
             }
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            $this->db->rollback();
+            throw $e;
         }
 
         return [

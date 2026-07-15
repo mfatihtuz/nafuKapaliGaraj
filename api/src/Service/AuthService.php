@@ -50,7 +50,7 @@ final class AuthService
 
             $this->db->run(
                 'INSERT INTO users (id, email, password_hash, display_name) VALUES (:id, :e, :h, :n)',
-                ['id' => $userId, 'e' => $email, 'h' => password_hash($password, PASSWORD_ARGON2ID), 'n' => $displayName]
+                ['id' => $userId, 'e' => $email, 'h' => \Depo\Support\Password::hash($password), 'n' => $displayName]
             );
             $this->db->run(
                 'INSERT INTO tenants (id, name, plan, locale) VALUES (:id, :name, :plan, :locale)',
@@ -89,9 +89,9 @@ final class AuthService
             'SELECT id, email, username, password_hash, display_name FROM users WHERE email = :e OR username = :u',
             ['e' => $lower, 'u' => $identifier]
         );
-        // Zamanlama sızıntısını azalt: kullanıcı yoksa da bir hash doğrula.
+        // Zamanlama sızıntısını azalt: kullanıcı yoksa da (aynı maliyetli) bir hash doğrula.
         if ($user === null) {
-            password_verify($password, '$argon2id$v=19$m=65536,t=4,p=1$YWFhYWFhYWFhYWFh$0000000000000000000000000000000000000000000');
+            password_verify($password, \Depo\Support\Password::DUMMY_HASH);
             $this->throttleFail($key);
             throw HttpException::unauthorized('E-posta veya parola hatalı');
         }
@@ -115,10 +115,12 @@ final class AuthService
             ['id' => $membership['tenant_id']]
         );
 
-        // Parola rehash gerekiyorsa güncelle (argon parametreleri değişirse).
-        if (password_needs_rehash((string) $user['password_hash'], PASSWORD_ARGON2ID)) {
+        // Parola rehash gerekiyorsa güncelle (ör. eski 64MB hash → 19MB): başarılı
+        // login'de düz parola eldeyken kademeli, kesintisiz geçiş. needsRehash'e de
+        // OPTS geçilir (Password içinde) yoksa her login'de gereksiz rehash olur.
+        if (\Depo\Support\Password::needsRehash((string) $user['password_hash'])) {
             $this->db->run('UPDATE users SET password_hash = :h WHERE id = :id',
-                ['h' => password_hash($password, PASSWORD_ARGON2ID), 'id' => $user['id']]);
+                ['h' => \Depo\Support\Password::hash($password), 'id' => $user['id']]);
         }
 
         $token = $this->createSession((string) $user['id'], (string) $membership['tenant_id']);
@@ -163,6 +165,16 @@ final class AuthService
         \Depo\Support\Schema::ensureLoginAttempts($this->db);
     }
 
+    /** PDOException "tablo yok" mu? (MySQL 1146 / SQLSTATE 42S02) — self-heal tetikleyicisi. */
+    private static function isMissingTable(\PDOException $e): bool
+    {
+        if ($e->getCode() === '42S02') {
+            return true;
+        }
+        $info = $e->errorInfo ?? null;
+        return is_array($info) && isset($info[1]) && (int) $info[1] === 1146;
+    }
+
     private function ensureUserSchema(): void
     {
         \Depo\Support\Schema::ensureUsername($this->db);
@@ -171,8 +183,18 @@ final class AuthService
     /** Kilitliyse 429 fırlat. */
     private function throttleAssert(string $key): void
     {
-        $this->ensureThrottleTable();
-        $row = $this->db->one('SELECT locked_until FROM login_attempts WHERE id = :id', ['id' => $key]);
+        // DDL'i (CREATE TABLE) HER login'de çalıştırma — paylaşımlı MySQL'de metadata
+        // kilidiyle login'i saniyelerce takıyordu. Normalde sadece indeksli SELECT;
+        // tablo GERÇEKTEN yoksa (migration çalışmamış) bir kez oluştur ve tekrar dene.
+        try {
+            $row = $this->db->one('SELECT locked_until FROM login_attempts WHERE id = :id', ['id' => $key]);
+        } catch (\PDOException $e) {
+            if (!$this->db->isMysql() || !self::isMissingTable($e)) {
+                throw $e;
+            }
+            $this->ensureThrottleTable();
+            $row = $this->db->one('SELECT locked_until FROM login_attempts WHERE id = :id', ['id' => $key]);
+        }
         if ($row !== null && $row['locked_until'] !== null) {
             $until = strtotime((string) $row['locked_until'] . ' UTC');
             if ($until !== false && $until > time()) {

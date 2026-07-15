@@ -489,4 +489,27 @@ fwrite(STDOUT, "\nTEST 19 — checksum: deterministik, hareketle değişir, tena
     eq($svc2->checksum()['checksum'], $c1['checksum'], 'farklı yol, aynı nihai qty → aynı checksum');
 }
 
+fwrite(STDOUT, "\nTEST 20 — tek transaction'lı push: bir op reddedilince DİĞERLERİ uygulanır (SAVEPOINT izolasyonu)\n");
+{
+    [$db] = make_test_db();
+    $t = seed_tenant($db);
+    $svc = new SyncService($db, $t['tenant_id'], $t['user_id']);
+    $okLoc = Uuid::v7();
+    $okPart = Uuid::v7();
+    // Orta op geçersiz DATA id (UUID değil) → lwwUpsert unprocessable fırlatır →
+    // yalnız o savepoint'e geri döner; ilk ve son op yine COMMIT olur.
+    $r = $svc->push([
+        opUpsertLocation(['id' => $okLoc, 'code' => 'B9-01', 'type' => 'drawer', 'path' => 'GARAJ/B9/B9-01', 'updated_at' => iso(0)]),
+        opUpsertPart(['id' => 'gecersiz-id', 'sku' => 'X', 'name' => 'kötü', 'count_mode' => 'exact', 'updated_at' => iso(0)]),
+        opUpsertPart(['id' => $okPart, 'sku' => 'R-OK', 'name' => 'iyi', 'count_mode' => 'exact', 'updated_at' => iso(0)]),
+    ]);
+    eq(count($r['applied']), 2, 'iki geçerli op uygulandı');
+    eq(count($r['rejected']), 1, 'geçersiz op reddedildi');
+    eq($r['rejected'][0]['reason'] ?? '', 'unprocessable', 'red sebebi unprocessable');
+    // KRİTİK: reddedilen op tüm batch'i geri almadı — geçerliler kalıcı (commit oldu).
+    check($db->one('SELECT 1 FROM locations WHERE id = :id', ['id' => $okLoc]) !== null, 'geçerli konum kalıcı (savepoint diğerlerini etkilemedi)');
+    check($db->one('SELECT 1 FROM parts WHERE id = :id', ['id' => $okPart]) !== null, 'geçerli parça kalıcı');
+    check($db->one('SELECT 1 FROM parts WHERE sku = :s', ['s' => 'X']) === null, 'geçersiz parça yazılmadı');
+}
+
 exit(test_summary());
