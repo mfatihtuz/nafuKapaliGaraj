@@ -61,6 +61,12 @@ export const IconImageOff = (p: P) => (
 export const IconUpload = (p: P) => (
   <svg {...base(p)}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M12 3v13M7 8l5-5 5 5" /></svg>
 )
+export const IconUndo = (p: P) => (
+  <svg {...base(p)}><path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5H9" /></svg>
+)
+export const IconBarcode = (p: P) => (
+  <svg {...base(p)}><path d="M3 5v14M7 5v14M11 5v14M14 5v14M18 5v14M21 5v14" /></svg>
+)
 export const IconSparkle = (p: P) => (
   <svg {...base(p)}><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" /></svg>
 )

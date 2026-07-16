@@ -86,7 +86,9 @@
     "manual": "Konum kodunu elle gir",
     "manual_placeholder": "örn. S1-07",
     "go": "Git",
-    "not_found": "Böyle bir konum yok: {code}"
+    "not_found": "Böyle bir konum yok: {code}",
+    "barcode_title": "Barkod tara",
+    "barcode_manual": "Kodu elle gir"
   },
   "location": {
     "empty": "Bu çekmece boş",
@@ -127,7 +129,8 @@
     "count": "{n} sonuç",
     "all_categories": "Tüm kategoriler",
     "all_locations": "Tüm konumlar",
-    "empty_inventory": "Envanter boş. İlk parçayı Ekle sekmesinden girin."
+    "empty_inventory": "Envanter boş. İlk parçayı Ekle sekmesinden girin.",
+    "scan_barcode": "Barkodla ara"
   },
   "part": {
     "code": "Parça kodu",
@@ -152,7 +155,9 @@
     "moved": "Taşındı: {code}",
     "danger_zone": "Depodan kaldır",
     "archive": "Bu parçayı depodan kaldır",
-    "archive_hint": "Parça arama ve listelerden gizlenir. Hareket geçmişi ve kayıtları korunur; istenirse geri alınabilir."
+    "archive_hint": "Parça arama ve listelerden gizlenir. Hareket geçmişi ve kayıtları korunur; istenirse geri alınabilir.",
+    "undo_last": "Son hareketi geri al",
+    "undone": "Son hareket geri alındı"
   },
   "count_mode": {
     "exact": "Miktarlı",
@@ -184,7 +189,10 @@
     "pick_category": "Önce bir kategori seçin",
     "location_is_group": "{code} bir dolap/grup — parça içindeki bir çekmeceye (ör. {code}-1) eklenir.",
     "mode_conflict": "{code} zaten \"{mode}\" sayım yöntemiyle kayıtlı — yöntemi parça detayından değiştirin.",
-    "group_other": "Diğer"
+    "group_other": "Diğer",
+    "scan_barcode": "Barkod tara (üretici kodu)",
+    "barcode_filled": "Barkod okundu, üretici kodu dolduruldu",
+    "barcode_exists": "Bu kod zaten \"{name}\" parçasında var"
   },
   "labels": {
     "title": "Etiket Yazdır",

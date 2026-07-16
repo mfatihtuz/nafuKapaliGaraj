@@ -5,8 +5,9 @@ import { useSearch, useCategories, useLocations, useFirstPhoto, type SearchHit }
 import type { Category, Location, Part, Stock } from '../db/types'
 import { levelLabel, unitLabel, formatQty } from '../lib/format'
 import { useT } from '../i18n'
-import { IconSearch, IconCart } from '../components/icons'
+import { IconSearch, IconCart, IconBarcode } from '../components/icons'
 import { AttachmentImage } from '../components/AttachmentImage'
+import { ScanModal } from '../components/ScanModal'
 
 function StockPill({ part, stock }: { part: Part; stock: Stock }) {
   const { t } = useT()
@@ -117,6 +118,7 @@ export function Search() {
   const [categoryId, setCategoryId] = useState('')
   const [locationId, setLocationId] = useState('')
   const [showQt, setShowQt] = useState(false)
+  const [scanning, setScanning] = useState(false)
   const categories = useCategories()
   const locations = useLocations()
   const catOptions = useMemo(() => flattenCategories(categories), [categories])
@@ -126,11 +128,24 @@ export function Search() {
   return (
     <>
       <AppHeader title={t('nav.search')} right={
-        <Link to="/shopping" title={t('shopping.open')} aria-label={t('shopping.open')}
-          className="btn-icon h-9 w-9 text-brand-600 hover:bg-brand-50">
-          <IconCart size={20} />
-        </Link>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setScanning(true)} title={t('search.scan_barcode')} aria-label={t('search.scan_barcode')}
+            className="btn-icon h-9 w-9 text-brand-600 hover:bg-brand-50">
+            <IconBarcode size={20} />
+          </button>
+          <Link to="/shopping" title={t('shopping.open')} aria-label={t('shopping.open')}
+            className="btn-icon h-9 w-9 text-brand-600 hover:bg-brand-50">
+            <IconCart size={20} />
+          </Link>
+        </div>
       } />
+      {scanning && (
+        <ScanModal
+          title={t('search.scan_barcode')}
+          onClose={() => setScanning(false)}
+          onResult={(code) => { setScanning(false); setQuery(code) }}
+        />
+      )}
       <Container>
         <div className="sticky top-14 z-10 -mx-4 mb-3 border-b border-line bg-canvas/95 px-4 pb-3 pt-2 backdrop-blur">
           <div className="flex flex-col gap-2 sm:flex-row">

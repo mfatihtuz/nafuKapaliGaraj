@@ -259,6 +259,25 @@ export async function auditStock(
   engine.schedule()
 }
 
+/**
+ * Son hareketi geri al: defter append-only olduğundan hareketi SİLMEZ, tersini yazar
+ * (SYNC_PROTOCOL — düzeltme = ters kayıt). Yalnızca EN SON hareket için çağrılır, o
+ * yüzden önceki (geçerli) duruma döner → stok negatife düşemez.
+ *  • Miktarlı: −delta'lık telafi hareketi (reason 'adjust', not 'Geri alma').
+ *  • Doluluk: bir önceki doluluğa geri set (prevLevel çağıran tarafça verilir).
+ * Transfer (çift bacaklı) geri alınmaz — çağıran taraf düğmeyi göstermez.
+ */
+export async function undoLastMovement(tx: Transaction, prevLevel: StockLevel | null): Promise<void> {
+  if (tx.delta != null && tx.delta !== 0) {
+    await moveStock({
+      partId: tx.part_id, locationId: tx.location_id, delta: -tx.delta,
+      reason: 'adjust', note: 'Geri alma', refId: tx.id,
+    })
+  } else if (tx.level_to != null && prevLevel != null) {
+    await setLevel(tx.part_id, tx.location_id, prevLevel, 'Geri alma')
+  }
+}
+
 // --- Ekler (FAZ 2.1 — foto/PDF) ---------------------------------------------
 
 /**

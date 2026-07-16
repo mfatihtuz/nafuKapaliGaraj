@@ -1119,6 +1119,49 @@ await sect('V-import', {}, async ({ page, pageErrors }) => {
   check('V9 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ W. SON HAREKETİ GERİ AL (undo) ════════════════════════════════════════
+await sect('W-undo', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'parts/p-r', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  const before = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1').qty
+  await page.getByRole('button', { name: '+1', exact: true }).first().click(); await page.waitForTimeout(400)
+  const afterPlus = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1').qty
+  check('W1 +1 uygulandı', afterPlus === before + 1, `${before}->${afterPlus}`)
+  await page.getByRole('button', { name: /Son hareketi geri al/ }).click(); await page.waitForTimeout(500)
+  const afterUndo = (await dexie(page, 'stock')).find((s) => s.key === 'p-r|d1').qty
+  check('W2 geri al: stok eski değere döndü', afterUndo === before, `${afterPlus}->${afterUndo}`)
+  const txs = await dexie(page, 'transactions')
+  check('W3 telafi hareketi yazıldı (adjust −1, defter silinmedi)', txs.some((t) => t.part_id === 'p-r' && t.delta === -1 && t.reason === 'adjust' && t.note === 'Geri alma'))
+  check('W4 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ X. BARKODLA ARAMA (ScanModal — kamera yok → manuel giriş) ═════════════
+await sect('X-barcode', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'search', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Barkodla ara' }).click(); await page.waitForTimeout(900)
+  check('X1 tarama modalı açıldı', await page.locator('[role="dialog"] input').count() > 0)
+  await page.locator('[role="dialog"] input').first().fill('R-10K-0805')
+  await page.locator('[role="dialog"]').getByRole('button', { name: 'Git', exact: true }).click(); await page.waitForTimeout(500)
+  const txt = await bodyText(page)
+  check('X2 barkod araması parçayı buldu (SKU/MPN eşleşmesi)', txt.includes('10K Direnç'), txt.slice(0, 80))
+  check('X3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ Y. GİRİŞTE MPN ALANI (barkod hedefi) KALICI ═══════════════════════════
+await sect('Y-intake-mpn', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'intake', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: /Direnç/ }).first().click(); await page.waitForTimeout(300)
+  await page.locator('#attr-deger').fill('3K3')
+  await page.getByRole('button', { name: '0805', exact: true }).click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder="MPN"]').fill('RC0805-3K3')
+  await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
+  await page.locator('#intake-loc').fill('D1'); await page.waitForTimeout(250)
+  await page.locator('input[placeholder="0"]').fill('10'); await page.waitForTimeout(150)
+  await page.getByRole('button', { name: /Kaydet/ }).last().click(); await page.waitForTimeout(700)
+  const np = (await dexie(page, 'parts')).find((p) => p.sku === 'R-3K3-0805')
+  check('Y1 parça MPN ile kaydedildi', np?.mpn === 'RC0805-3K3', JSON.stringify({ sku: np?.sku, mpn: np?.mpn }))
+  check('Y2 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ---------------------------------------------------------------------------
 await browser.close()
 const fails = results.filter((r) => !r.ok)

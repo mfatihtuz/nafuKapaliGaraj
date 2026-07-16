@@ -5,7 +5,7 @@ import {
   usePart, useCategory, useCategories, useLocationsForPart, useTransactionsForPart, useLocations,
 } from '../db/queries'
 import type { CountMode, Part, Stock, Location } from '../db/types'
-import { savePart, softDeletePart, movePartStock } from '../db/actions'
+import { savePart, softDeletePart, movePartStock, undoLastMovement } from '../db/actions'
 import { db } from '../db/dexie'
 import { levelLabel, reasonLabel, unitLabel, timeAgo } from '../lib/format'
 import { buildTags } from '../lib/sku'
@@ -15,7 +15,7 @@ import { AttributeForm } from '../components/AttributeForm'
 import { useT } from '../i18n'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
-import { IconEdit, IconTrash, IconCheck, IconMoveArrow } from '../components/icons'
+import { IconEdit, IconTrash, IconCheck, IconMoveArrow, IconUndo } from '../components/icons'
 import { LocationPicker, resolveLeaf } from '../components/LocationPicker'
 import { PhotoGallery } from '../components/PhotoGallery'
 
@@ -359,7 +359,28 @@ export function PartDetail() {
 
         {/* Hareket geçmişi */}
         <div className="card mb-3 p-4">
-          <div className="field-label">{t('part.history')}</div>
+          <div className="field-label flex items-center justify-between">
+            <span>{t('part.history')}</span>
+            {(() => {
+              // Yalnız EN SON hareket geri alınabilir (transfer hariç). Böylece önceki
+              // geçerli duruma dönülür; stok negatife düşmez.
+              const last = history[0]
+              const prevLevel = last?.level_to != null
+                ? (history.slice(1).find((tx) => tx.location_id === last.location_id && tx.level_to != null)?.level_to ?? null)
+                : null
+              const canUndo = canWrite && last && last.reason !== 'transfer'
+                && (last.delta != null || (last.level_to != null && prevLevel != null))
+              if (!canUndo) return null
+              return (
+                <button
+                  onClick={() => { void undoLastMovement(last, prevLevel); toast.show(t('part.undone'), 'success') }}
+                  className="btn-ghost h-8 gap-1 px-2 text-xs text-brand-500 hover:text-brand-800"
+                >
+                  <IconUndo size={15} /> {t('part.undo_last')}
+                </button>
+              )
+            })()}
+          </div>
           {history.length === 0 ? (
             <p className="text-sm text-brand-300">{t('part.no_history')}</p>
           ) : (

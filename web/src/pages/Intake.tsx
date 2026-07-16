@@ -15,8 +15,9 @@ import { levelLabel, unitLabel } from '../lib/format'
 import { useT } from '../i18n'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
-import { IconCheck, IconChevronRight, IconBack, IconSearch, IconFolder, IconEdit, IconSparkle } from '../components/icons'
+import { IconCheck, IconChevronRight, IconBack, IconSearch, IconFolder, IconEdit, IconSparkle, IconBarcode } from '../components/icons'
 import { CategoryEditModal } from '../components/settings/CategoryEditor'
+import { ScanModal } from '../components/ScanModal'
 import { api } from '../sync/api'
 import { downscaleImage, blobToBase64 } from '../lib/image'
 
@@ -60,6 +61,9 @@ export function Intake() {
   const [catQuery, setCatQuery] = useState('')
   const [attrs, setAttrs] = useState<PartAttributes>({})
   const [name, setName] = useState('')
+  const [mpn, setMpn] = useState('')
+  const [manufacturer, setManuf] = useState('')
+  const [scanning, setScanning] = useState(false)
   const [locCode, setLocCode] = useState(searchParams.get('location') ?? '')
   const [qty, setQty] = useState('')
   const [unit, setUnit] = useState('adet')
@@ -88,6 +92,8 @@ export function Intake() {
       const s = res.suggestion
       if (!s) { toast.show(t('ai.no_result'), 'error'); return }
       if (typeof s.name === 'string' && s.name.trim()) setName(s.name.trim())
+      if (typeof s.mpn === 'string' && s.mpn.trim()) setMpn(s.mpn.trim())
+      if (typeof s.manufacturer === 'string' && s.manufacturer.trim()) setManuf(s.manufacturer.trim())
       const schemaKeys = new Set((category.attribute_schema ?? []).map((a) => a.key))
       const sug = s.attributes
       if (sug && typeof sug === 'object') {
@@ -106,6 +112,13 @@ export function Intake() {
     } finally {
       setAiBusy(false)
     }
+  }
+
+  /** Barkod okundu: MPN'i doldur; bu kod zaten bir parçada varsa uyar (mükerrer önleme). */
+  async function onBarcode(code: string): Promise<void> {
+    setMpn(code)
+    const hit = await db.parts.filter((p) => !p.deleted_at && (p.mpn === code || p.sku === code)).first()
+    toast.show(hit ? t('intake.barcode_exists', { name: hit.name }) : t('intake.barcode_filled'), hit ? 'info' : 'success')
   }
 
   const selectable = useMemo(() => categories.filter((c) => c.sku_template), [categories])
@@ -194,7 +207,8 @@ export function Intake() {
       } else {
         const part: Part = {
           id: existing?.id ?? uuidv7(), category_id: category.id, sku, name: finalName,
-          mpn: null, manufacturer: null, attributes: attrs, tags: buildTags(finalName, attrs, category),
+          mpn: mpn.trim() || null, manufacturer: manufacturer.trim() || null,
+          attributes: attrs, tags: buildTags(finalName, attrs, category, manufacturer, mpn),
           count_mode: mode, abc_class: 'C', min_qty: null, unit: mode === 'exact' ? unit : 'adet',
           datasheet_url: null, photo_id: null, notes: null, updated_at: '', deleted_at: null,
         }
@@ -211,7 +225,7 @@ export function Intake() {
       }
       toast.show(t('intake.saved', { code: sku }), 'success')
       // Seri modda: aynı kategori, temiz form, 2. adıma dön.
-      setAttrs({}); setName(''); setQty(''); setLvl(null)
+      setAttrs({}); setName(''); setMpn(''); setManuf(''); setQty(''); setLvl(null)
       if (serial) setStep(2)
       else { setCatId(''); setStep(1) }
     } finally {
@@ -301,6 +315,13 @@ export function Intake() {
                 )}
               </div>
               {editCat && <CategoryEditModal initial={category} onClose={() => setEditCat(false)} />}
+              {scanning && (
+                <ScanModal
+                  title={t('intake.scan_barcode')}
+                  onClose={() => setScanning(false)}
+                  onResult={(code) => { setScanning(false); void onBarcode(code) }}
+                />
+              )}
 
               {/* Fotoğraftan tanı (AI, FAZ 2.3) — anahtar yoksa nazik uyarı. */}
               {canWrite && (
@@ -328,6 +349,24 @@ export function Intake() {
               <div className="mt-3">
                 <label className="field-label">{t('intake.name_auto')}</label>
                 <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+
+              {/* Üretici kodu (MPN) — barkod okutup doldurulabilir + üretici */}
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div>
+                  <label className="field-label">{t('part.mpn')} <span className="text-brand-300">({t('common.optional')})</span></label>
+                  <div className="flex gap-1.5">
+                    <input className="input font-mono" value={mpn} onChange={(e) => setMpn(e.target.value)} placeholder="MPN" />
+                    <button type="button" onClick={() => setScanning(true)}
+                      className="btn-navy shrink-0 px-3" title={t('intake.scan_barcode')} aria-label={t('intake.scan_barcode')}>
+                      <IconBarcode size={18} />
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="field-label">{t('part.manufacturer')} <span className="text-brand-300">({t('common.optional')})</span></label>
+                  <input className="input" value={manufacturer} onChange={(e) => setManuf(e.target.value)} placeholder={t('part.manufacturer')} />
+                </div>
               </div>
 
               <div className="mt-5 flex justify-between">

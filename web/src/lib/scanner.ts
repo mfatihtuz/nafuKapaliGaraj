@@ -19,9 +19,12 @@ export interface ScannerHandle {
 export async function startScanner(
   video: HTMLVideoElement,
   onCode: (text: string) => void,
+  opts: { multiFormat?: boolean } = {},
 ): Promise<ScannerHandle> {
-  const { BrowserQRCodeReader } = await import('@zxing/browser')
-  const reader = new BrowserQRCodeReader()
+  // multiFormat: ürün barkodları (EAN/UPC/Code128/DataMatrix…) da okunur — parça girişi
+  // için (poşet barkodu). Konum taramada YALNIZCA QR (konum etiketleri QR'dır).
+  const mod = await import('@zxing/browser')
+  const reader = opts.multiFormat ? new mod.BrowserMultiFormatReader() : new mod.BrowserQRCodeReader()
   let controls: IScannerControls | null = null
 
   controls = await reader.decodeFromConstraints(
