@@ -4,6 +4,31 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 
 ---
 
+## 2026-07-16 · Barkod tarama + son hareketi geri al (hızlı kazanımlar)
+
+**Barkod:** `lib/scanner.ts` multiFormat (BrowserMultiFormatReader — QR + EAN/UPC/
+Code128/DataMatrix/PDF417/Aztec); `ScanModal` yeniden kullanılabilir kamera modalı
+(kamera reddedilirse elle giriş, StrictMode-güvenli kapatma). Intake'e **MPN + üretici
+alanı + barkod butonu** (poşet barkodu → MPN); AI önerisi de MPN/üretici doldurur;
+barkod bilinen parçadaysa uyarır. Search'e barkod butonu (useSearch zaten mpn eşliyor).
+Konum taraması QR-only kalır.
+
+**Undo:** `undoLastMovement` — defter append-only → hareketi silmez, tersini yazar.
+Yalnız EN SON hareket, **transfer hariç** (level transferi dahil — iki bacak da reason
+'transfer'). Telafi id'si kaynaktan **deterministik** (idempotent: çift-dokunuş/iki-cihaz
+negatif stok yapmaz) + düğmede in-flight kilit. PartDetail geçmiş kartında buton.
+
+**Adversarial inceleme (2 tur):** feature diff'inde 5 gerçek bulgu bulundu ve düzeltildi:
+level-transfer undo guard atlanması (hayalet stok), undo idempotentlik (negatif stok),
+mevcut parçaya MPN backfill (sessiz kayıp), ScanModal kamera sızıntısı, kategori-değişince
+MPN sızması. Hepsi regresyon testli.
+
+**Test:** E2E 189 (W undo, X barkod-arama, Y MPN kalıcı, Z level-transfer guard,
+AA MPN backfill), tsc temiz. **Sunucu değişikliği YOK** (mevcut stok/parça sync yolu).
+Commit'ler `a3e0ef9` (feature) + `09b9da9` (düzeltmeler).
+
+---
+
 ## 2026-07-16 · CSV / toplu parça içe aktarma (kurulum hızlandırıcı)
 
 **Neden:** İlk stoklamada en büyük sürtünme 250-600 SKU'yu elle girmek. Sprint

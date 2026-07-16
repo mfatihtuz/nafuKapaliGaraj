@@ -224,6 +224,7 @@
     <g id="i-bulb"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></g>
     <g id="i-list"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></g>
     <g id="i-upload"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M12 3v13M7 8l5-5 5 5"/></g>
+    <g id="i-barcode"><path d="M3 5v14M7 5v14M11 5v14M14 5v14M18 5v14M21 5v14"/></g>
   </defs>
 </svg>
 
@@ -434,6 +435,11 @@
         </div>
       </div>
       <p class="small muted">Sağ üstteki <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><use href="#i-cart"/></svg> sepet simgesi seni doğrudan <b>Eksikler</b> listesine götürür.</p>
+
+      <div class="card">
+        <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="g"><use href="#i-barcode"/></svg> Barkodla ara <span class="phase done">Yeni</span></h3>
+        <p>“Bu parça bende var mı?” — kutunun/poşetin barkodunu okut, DEPO o kodu taşıyan parçayı bulsun. Arama başlığındaki <b>barkod</b> simgesine dokun, kamerayı barkoda tut (kamera açılmazsa kodu elle yazabilirsin).</p>
+      </div>
     </section>
 
     <!-- ============ EKLE ============ -->
@@ -464,6 +470,10 @@
           <p>Parçanın fotoğrafını çek, DEPO tahmini adı ve özellikleri senin için doldursun. Aşağıda ayrıntısı var. <span class="muted">(Sunucuda anahtar tanımlıysa aktif olur.)</span></p>
         </div>
       </div>
+      <div class="card">
+        <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="g"><use href="#i-barcode"/></svg> Barkod okut → üretici kodu (MPN) <span class="phase done">Yeni</span></h3>
+        <p>Özellikler adımında <b>üretici kodu (MPN)</b> alanının yanındaki barkod düğmesine bas, poşetin/kutunun barkodunu kameraya göster — kod otomatik dolar. Aynı barkod başka bir parçada kayıtlıysa DEPO seni uyarır (mükerrer eklemeyi önler). AI ile fotoğraftan tanıma da üretici kodunu doldurabilir.</p>
+      </div>
       <div class="callout warn"><span class="ci"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-info"/></svg></span>
         <div>Miktarlı bir parçada <b>boş miktar</b> ile kaydedemezsin — yoksa parça “konumu belirsiz” kalırdı. Miktarı girince Kaydet aktifleşir.</div>
       </div>
@@ -486,6 +496,7 @@
               <span class="chip ok" style="margin-left:4px"><span class="dot"></span>DOLU</span>
               <span class="chip warn"><span class="dot"></span>AZ</span>
               <span class="chip bad"><span class="dot"></span>BİTTİ</span></li>
+            <li><b>Yanlışlıkla mı bastın?</b> Hareket geçmişinin başındaki <b>“Son hareketi geri al”</b> ile en son işlemi tek dokunuşla geri al. (Kayıt silinmez, ters bir düzeltme yazılır.)</li>
           </ul>
         </div>
         <div class="card">
@@ -669,7 +680,7 @@
 <footer>
   <div class="in">
     <span>DEPO — Atölye Envanteri · <b>Kullanım Kılavuzu</b></span>
-    <span class="muted">Kapsam: FAZ 1 + FAZ 2 + CSV içe aktarma · FAZ'lar eklendikçe güncellenir.</span>
+    <span class="muted">Kapsam: FAZ 1 + FAZ 2 + CSV içe aktarma + barkod/geri-al · FAZ'lar eklendikçe güncellenir.</span>
     <a class="backtop" href="#baslarken">↑ Başa dön</a>
   </div>
 </footer>
