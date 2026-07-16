@@ -15,7 +15,8 @@ import { levelLabel, unitLabel } from '../lib/format'
 import { useT } from '../i18n'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
-import { IconCheck, IconChevronRight, IconBack, IconSearch, IconFolder } from '../components/icons'
+import { IconCheck, IconChevronRight, IconBack, IconSearch, IconFolder, IconEdit } from '../components/icons'
+import { CategoryEditModal } from '../components/settings/CategoryEditor'
 
 const LEVELS: StockLevel[] = ['full', 'low', 'empty']
 
@@ -63,6 +64,7 @@ export function Intake() {
   const [level, setLvl] = useState<StockLevel | null>(null)
   const [serial, setSerial] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [editCat, setEditCat] = useState(false)
 
   const selectable = useMemo(() => categories.filter((c) => c.sku_template), [categories])
   // Üç kademeli ağaç: KÖK (ör. Elektronik) → ALT GRUP (ör. Pasif) → YAPRAK (ör. Direnç).
@@ -243,11 +245,20 @@ export function Intake() {
           {/* Adım 2 — Özellikler */}
           {step === 2 && category && (
             <div className="card card-pad">
-              <button onClick={() => setStep(1)} className="mb-4 flex items-center gap-2 text-sm text-brand-500 hover:text-brand-800">
-                <span className="badge bg-brand-50 font-mono">{category.code}</span>
-                <span className="font-semibold text-brand-800">{category.name_tr}</span>
-                <span className="text-brand-300">· değiştir</span>
-              </button>
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <button onClick={() => setStep(1)} className="flex min-w-0 items-center gap-2 text-sm text-brand-500 hover:text-brand-800">
+                  <span className="badge bg-brand-50 font-mono">{category.code}</span>
+                  <span className="truncate font-semibold text-brand-800">{category.name_tr}</span>
+                  <span className="shrink-0 text-brand-300">· değiştir</span>
+                </button>
+                {/* Kategorinin özniteliklerini/SKU şablonunu buradan düzenle — Ayarlar'daki editörün aynısı. */}
+                {canWrite && (
+                  <button onClick={() => setEditCat(true)} className="btn-ghost h-8 shrink-0 px-2 text-xs text-brand-500">
+                    <IconEdit size={14} /> {t('intake.edit_category')}
+                  </button>
+                )}
+              </div>
+              {editCat && <CategoryEditModal initial={category} onClose={() => setEditCat(false)} />}
 
               {category.attribute_schema && category.attribute_schema.length > 0 && (
                 <AttributeForm schema={category.attribute_schema} values={attrs} onChange={(k, v) => setAttrs((a) => ({ ...a, [k]: v }))} />

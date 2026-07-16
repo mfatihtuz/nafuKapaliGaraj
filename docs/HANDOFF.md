@@ -4,6 +4,21 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 
 ---
 
+## 2026-07-16 · FAZ 2 başladı — Parça Ekle'de "Kategoriyi düzenle" pop-up
+
+**Karar:** prefix/suffix ŞİMDİLİK eklenmiyor (değeri kompakt yaz: 10K/12V). Gerçek
+sürtünme görülünce "birimi de koda kat" kutusu düşünülecek.
+
+**Yapıldı:** Kategori düzenleme editörü tek bileşene çıkarıldı (`CategoryEditor.tsx`:
+`CategoryEditForm` + `CategoryEditModal` + `AttributeEditor`/`emptyCategory`). Ayarlar→
+Kategoriler artık bu ortak formu kullanıyor. Parça Ekle 2. adımda **"Kategoriyi düzenle"**
+düğmesi → aynı editör bir pop-up'ta açılıyor; kaydedince kategori güncellenir ve UI
+Dexie'den okuduğu için form/SKU canlı yenilenir ("aynı ayarlardan yapılmış gibi").
+Tek kaynak → nereden düzenlersen düzenle sonuç aynı. E2E'ye A2.5–A2.7 eklendi
+(pop-up açılır, kaydeder, SKU şablonunu bozmaz). **E2E 153/153.**
+
+---
+
 ## 2026-07-16 · KRİTİK 2: Sunucu ağacı bozuktu (127 yetim) — UUID'siz onarım
 
 **Kök neden (gerçek DB dökümünden kanıtlandı):** Kullanıcının canlı DB'sinde 173 aktif

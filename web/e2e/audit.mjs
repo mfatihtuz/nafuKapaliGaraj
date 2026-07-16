@@ -175,6 +175,19 @@ await sect('A-intake', {}, async ({ page, pageErrors }) => {
   await page.getByRole('button', { name: '0805', exact: true }).click(); await page.waitForTimeout(200)
   const skuPrev = await bodyText(page)
   check('A2 SKU önizleme R-4K7-0805', skuPrev.includes('R-4K7-0805'), skuPrev.slice(0, 80))
+
+  // A2.5: "Kategoriyi düzenle" pop-up (Intake) — Ayarlar'daki editörle AYNI bileşen.
+  const dlg = page.locator('[role="dialog"]')
+  await page.getByRole('button', { name: /Kategoriyi düzenle/ }).click(); await page.waitForTimeout(300)
+  const dlgCode = await dlg.locator('input.font-mono').first().inputValue().catch(() => '')
+  check('A2.5 pop-up açıldı ve doğru kategoriyi getirdi (kod R + özellik editörü)',
+    dlgCode === 'R' && (await bodyText(page)).includes('özellik ekle'))
+  await dlg.locator('input').first().fill('Direnç ✎'); await page.waitForTimeout(150)
+  await dlg.getByRole('button', { name: 'Kaydet' }).click(); await page.waitForTimeout(400)
+  const catsA25 = await dexie(page, 'categories')
+  check('A2.6 pop-up kaydı kategoriyi güncelledi (Dexie)', catsA25.find((c) => c.id === 'cat-r')?.name_tr === 'Direnç ✎')
+  check('A2.7 pop-up SKU şablonunu bozmadı', catsA25.find((c) => c.id === 'cat-r')?.sku_template === 'R-{deger}-{paket}')
+
   await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
   await page.locator('#intake-loc').fill('D1'); await page.waitForTimeout(250)
 
