@@ -201,7 +201,7 @@ export function PartDetail() {
                   <select id="pcat" className="select" value={current.category_id ?? ''}
                     onChange={(e) => setDraft({ ...current, category_id: e.target.value || null })}>
                     <option value="">{t('common.none')}</option>
-                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name_tr}</option>)}
+                    {[...categories].sort((a, b) => a.name_tr.localeCompare(b.name_tr, 'tr')).map((c) => <option key={c.id} value={c.id}>{c.name_tr}</option>)}
                   </select>
                 </div>
                 <div>
@@ -258,7 +258,7 @@ export function PartDetail() {
                   value={current.unit}
                   onChange={(e) => setDraft({ ...current, unit: e.target.value })}
                 >
-                  {UNITS.map((u) => <option key={u} value={u}>{unitLabel(t, u)}</option>)}
+                  {[...UNITS].sort((a, b) => unitLabel(t, a).localeCompare(unitLabel(t, b), 'tr')).map((u) => <option key={u} value={u}>{unitLabel(t, u)}</option>)}
                   {!UNITS.includes(current.unit as never) && <option value={current.unit}>{unitLabel(t, current.unit)}</option>}
                 </select>
               </div>

@@ -263,7 +263,7 @@
       "add_title": "Yeni kategori",
       "name": "Ad",
       "code": "Kod öneki",
-      "code_hint": "Parça kodunun başına gelir, örn. R, VIDA",
+      "code_hint": "Parça kodunun başına gelir — en fazla 3 karakter, örn. R, VID",
       "parent": "Üst kategori",
       "no_parent": "Ana kategori (üst yok)",
       "count_mode": "Varsayılan sayım",

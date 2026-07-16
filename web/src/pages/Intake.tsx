@@ -207,9 +207,9 @@ export function Intake() {
               <div className="max-h-[60vh] space-y-5 overflow-y-auto">
                 {tree.map((r) => (
                   <div key={r.root?.id ?? '__root__'}>
-                    {/* Kök başlığı — ör. Elektronik */}
-                    <div className="mb-2 flex items-center gap-1.5 border-b border-line pb-1 text-sm font-bold text-brand-800">
-                      <IconFolder size={14} /> {r.root?.name_tr ?? t('intake.group_other')}
+                    {/* Ana başlık (kök) — ör. Elektronik. Alt gruplardan belirgin ayrılsın. */}
+                    <div className="mb-2.5 flex items-center gap-2 border-b-2 border-accent pb-1.5 text-base font-extrabold uppercase tracking-wide text-brand-900">
+                      <IconFolder size={17} className="text-accent" /> {r.root?.name_tr ?? t('intake.group_other')}
                     </div>
                     <div className="space-y-3 pl-1">
                       {r.subs.map((g) => (
@@ -294,7 +294,7 @@ export function Intake() {
                       <div className="w-32">
                         <label className="field-label">{t('intake.unit')}</label>
                         <select className="select" value={unit} onChange={(e) => setUnit(e.target.value)}>
-                          {UNITS.map((u) => <option key={u} value={u}>{unitLabel(t, u)}</option>)}
+                          {[...UNITS].sort((a, b) => unitLabel(t, a).localeCompare(unitLabel(t, b), 'tr')).map((u) => <option key={u} value={u}>{unitLabel(t, u)}</option>)}
                         </select>
                       </div>
                     </div>

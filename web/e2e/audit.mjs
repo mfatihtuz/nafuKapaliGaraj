@@ -441,18 +441,18 @@ await sect('E-categories', {}, async ({ page, pageErrors }) => {
   await page.getByRole('button', { name: 'Kategori ekle' }).click(); await page.waitForTimeout(300)
   const editor = page.locator('.rounded-xl.border')
   await editor.locator('input').first().fill('Yapıştırıcı')
-  await editor.locator('input.font-mono').first().fill('yap 15')  // sanitize testi: küçük harf + boşluk + rakam
+  await editor.locator('input.font-mono').first().fill('yap 15')  // sanitize testi: küçük harf + boşluk + rakam; kod ≤3 ile YAP'a kısalır
   await page.waitForTimeout(200)
   // özellik ekle + koda girer işaretle
   await page.getByRole('button', { name: /özellik ekle/ }).click(); await page.waitForTimeout(200)
   await editor.locator('input[placeholder^="anahtar"]').fill('tip')
   await editor.locator('input[placeholder^="Etiket"]').fill('Tip')
   await editor.locator('label', { hasText: 'koda girer' }).locator('input').check(); await page.waitForTimeout(200)
-  check('E1 dinamik şablon YAP15-{tip}', (await bodyText(page)).includes('YAP15-{tip}'))
+  check('E1 dinamik şablon YAP-{tip} (kod ≤3)', (await bodyText(page)).includes('YAP-{tip}'))
   await editor.getByRole('button', { name: 'Kaydet' }).click(); await page.waitForTimeout(500)
   const catsE = await dexie(page, 'categories')
   const newCat = catsE.find((c) => c.name_tr === 'Yapıştırıcı')
-  check('E2 kategori kaydedildi, kod sanitize edildi (YAP15)', newCat?.code === 'YAP15', JSON.stringify({ code: newCat?.code, tpl: newCat?.sku_template }))
+  check('E2 kategori kaydedildi, kod ≤3 sanitize edildi (YAP)', newCat?.code === 'YAP', JSON.stringify({ code: newCat?.code, tpl: newCat?.sku_template }))
 
   // E3: alt kategori ekleme (+)
   await page.locator('.row', { hasText: 'Muhtelif' }).getByRole('button', { name: 'Alt kategori' }).click(); await page.waitForTimeout(300)

@@ -83,7 +83,7 @@ export function Labels() {
               <label className="field-label" htmlFor="cab">{t('labels.cabinet')}</label>
               <select id="cab" value={cabinetId} onChange={(e) => pickCabinet(e.target.value)} className="select">
                 <option value="">—</option>
-                {cabinets.map((c) => (
+                {[...cabinets].sort((a, b) => a.code.localeCompare(b.code, 'tr', { numeric: true })).map((c) => (
                   <option key={c.id} value={c.id}>{c.code} — {c.name ?? c.path}</option>
                 ))}
               </select>
@@ -93,7 +93,7 @@ export function Labels() {
                 <label className="field-label" htmlFor="ltype">{t('labels.type')}</label>
                 <select id="ltype" value={typeId} onChange={(e) => setTypeId(e.target.value)} className="select">
                   <option value="">{t('labels.default_type')}</option>
-                  {types.map((tp) => (
+                  {[...types].sort((a, b) => a.name.localeCompare(b.name, 'tr')).map((tp) => (
                     <option key={tp.id} value={tp.id}>{tp.name} ({tp.w_mm}×{tp.h_mm}mm){tp.qty ? ` · ${tp.qty} adet` : ''}</option>
                   ))}
                 </select>

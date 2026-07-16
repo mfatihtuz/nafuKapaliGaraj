@@ -4,6 +4,28 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 
 ---
 
+## 2026-07-16 · Cila turu: belirgin başlık, alfabetik listeler, kısa kod, TR karakter
+
+**Yapıldı (kullanıcı geri bildirimi):**
+- **Ana başlıklar belirginleşti (Parça Ekle seçici):** kök başlığı artık büyük, kalın,
+  BÜYÜK HARF + accent alt çizgi/ikon (alt gruplardan net ayrılır).
+- **Tüm veri listeleri alfabetik:** kategori/konum/birim/dolap/etiket-tipi açılır
+  menüleri Türkçe sıralı (`localeCompare('tr')`); kategori sıralaması ad'a göre,
+  konumlar koda göre (numeric). (Search, PartDetail, Intake, Ayarlar-Kategori/Konum, Etiket.)
+- **Kategori kodları ≤3 karakter:** uzun kodlar kısaltıldı (AMPUL→AMP, SERIT→SER,
+  XTAL→OSC, VREG→REG, OPTO→OPT); kod giriş alanı `maxLength=3` + sanitize `.slice(0,3)`.
+  Konum kodları bu kısıttan muaf (fiziksel yerleşim). UUID'ler korundu (bağlar sağlam).
+- **Jargon → günlük dil:** "Aşındırıcı & Kesici"→"Kesici & Zımpara",
+  "Standoff & Distans"→"Distans & Ayak", "Nozzle"→"Nozül".
+- **ASCII yazılmış Türkçe düzeltildi (isim + öznitelik etiketi + enum seçenek):**
+  Zimpara Kagidi→Zımpara Kâğıdı, Uc & Bicak→Uç & Bıçak, Yapistirici→Yapıştırıcı,
+  Cozucu→Çözücü, Yag→Yağ, Zincir Yagi→Zincir Yağı, Sunger→Sünger … (~55 dize).
+  Geniş tarama sonrası kalıntı yok. `db/seed.sql` + `005_category_tree.sql` yeniden üretildi.
+- **Paketleme:** `scripts/pack.sh` — ZIP artık script'le üretilir (kök `.htaccess`
+  düşme hatası bir daha olmaz; bütünlük denetimli).
+
+---
+
 ## 2026-07-16 · Kategori ağacı → tam 3 kademeli (Kök > Alt grup > Yaprak)
 
 **Yapıldı:** Kategori ağacı, kullanıcının isteğiyle TÜM ana dallarda **tek biçim 3

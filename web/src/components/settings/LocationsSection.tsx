@@ -263,7 +263,9 @@ function LocationEditor({
           <label className="field-label">{t('settings.locations.parent')}</label>
           <select className="select" value={draft.parent_id ?? ''} onChange={(e) => setDraft({ ...draft, parent_id: e.target.value || null })}>
             <option value="">{t('settings.locations.no_parent')}</option>
-            {locations.filter((l) => !bannedParents.has(l.id)).map((l) => (
+            {locations.filter((l) => !bannedParents.has(l.id))
+              .sort((a, b) => a.code.localeCompare(b.code, 'tr', { numeric: true }))
+              .map((l) => (
               <option key={l.id} value={l.id}>{'  '.repeat(0)}{l.code}{l.name ? ` — ${l.name}` : ''}</option>
             ))}
           </select>
@@ -395,7 +397,7 @@ function BulkGenerator({
           <label className="field-label">{t('settings.locations.parent')}</label>
           <select className="select" value={parentId} onChange={(e) => setParentId(e.target.value)}>
             <option value="">{t('settings.locations.no_parent')}</option>
-            {locations.map((l) => <option key={l.id} value={l.id}>{l.code}{l.name ? ` — ${l.name}` : ''}</option>)}
+            {[...locations].sort((a, b) => a.code.localeCompare(b.code, 'tr', { numeric: true })).map((l) => <option key={l.id} value={l.id}>{l.code}{l.name ? ` — ${l.name}` : ''}</option>)}
           </select>
         </div>
         <div>

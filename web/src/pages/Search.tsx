@@ -67,7 +67,7 @@ function flattenCategories(categories: Category[]): { id: string; label: string 
   }
   const out: { id: string; label: string }[] = []
   const walk = (parent: string | null, depth: number) => {
-    for (const c of (byParent.get(parent) ?? []).sort((a, b) => a.sort_order - b.sort_order)) {
+    for (const c of (byParent.get(parent) ?? []).sort((a, b) => a.name_tr.localeCompare(b.name_tr, 'tr'))) {
       out.push({ id: c.id, label: `${'  '.repeat(depth)}${c.name_tr}` })
       walk(c.id, depth + 1)
     }

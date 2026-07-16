@@ -120,7 +120,7 @@ export function CategoriesSection({ canWrite }: { canWrite: boolean }) {
 
   async function save() {
     if (!draft) return
-    const code = foldToAscii(draft.code).toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const code = foldToAscii(draft.code).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3)
     if (!draft.name_tr.trim() || !code) {
       toast.show(t('settings.categories.need_name_code'), 'error')
       return
@@ -220,7 +220,9 @@ export function CategoriesSection({ canWrite }: { canWrite: boolean }) {
             </div>
             <div>
               <label className="field-label">{t('settings.categories.code')}</label>
-              <input className="input font-mono uppercase" value={draft.code} onChange={(e) => patchDraft({ code: e.target.value })} />
+              {/* Kategori kodu SKU önekidir — kısa tut: en fazla 3 karakter. */}
+              <input className="input font-mono uppercase" maxLength={3} value={draft.code}
+                onChange={(e) => patchDraft({ code: foldToAscii(e.target.value).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3) })} />
               <p className="field-hint">{t('settings.categories.code_hint')}</p>
             </div>
             <div>
@@ -229,6 +231,7 @@ export function CategoriesSection({ canWrite }: { canWrite: boolean }) {
                 <option value="">{t('settings.categories.no_parent')}</option>
                 {/* Kendisi ve altları seçilemez — kategori kendi alt ağacına bağlanırsa ağaç kaybolur. */}
                 {(() => { const banned = selfAndDescendants(draft.id); return categories.filter((c) => !banned.has(c.id)) })()
+                  .sort((a, b) => a.name_tr.localeCompare(b.name_tr, 'tr'))
                   .map((c) => <option key={c.id} value={c.id}>{c.name_tr}</option>)}
               </select>
             </div>
