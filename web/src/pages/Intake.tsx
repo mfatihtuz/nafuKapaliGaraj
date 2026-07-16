@@ -65,18 +65,40 @@ export function Intake() {
   const [busy, setBusy] = useState(false)
 
   const selectable = useMemo(() => categories.filter((c) => c.sku_template), [categories])
-  const groups = useMemo(() => {
+  // Üç kademeli ağaç: KÖK (ör. Elektronik) → ALT GRUP (ör. Pasif) → YAPRAK (ör. Direnç).
+  // Yaprak doğrudan kökün altındaysa (ara grupsuz) sanal "__direct__" grubunda toplanır.
+  const tree = useMemo(() => {
     const q = normalize(catQuery)
-    const map = new Map<string, { name: string; items: Category[] }>()
+    const byId = new Map(categories.map((c) => [c.id, c]))
+    const sortKey = (c: Category | null | undefined) => (c ? (c.sort_order ?? 0) : Number.MAX_SAFE_INTEGER)
+    type Group = { group: Category | null; items: Category[] }
+    type Root = { root: Category | null; subs: Map<string, Group> }
+    const roots = new Map<string, Root>()
     for (const c of selectable) {
       if (q && !normalize(c.name_tr).includes(q) && !normalize(c.code).includes(q)) continue
-      const parent = categories.find((p) => p.id === c.parent_id)
-      const key = parent?.id ?? 'root'
-      if (!map.has(key)) map.set(key, { name: parent?.name_tr ?? t('intake.group_other'), items: [] })
-      map.get(key)!.items.push(c)
+      const parent = c.parent_id ? byId.get(c.parent_id) : undefined
+      const grand = parent?.parent_id ? byId.get(parent.parent_id) : undefined
+      // grand varsa: kök=grand, ara grup=parent. Yoksa parent kök, ara grup yok.
+      const rootCat = grand ?? parent
+      const groupCat = grand ? parent : undefined
+      const rKey = rootCat?.id ?? '__root__'
+      if (!roots.has(rKey)) roots.set(rKey, { root: rootCat ?? null, subs: new Map() })
+      const rEntry = roots.get(rKey)!
+      const gKey = groupCat?.id ?? '__direct__'
+      if (!rEntry.subs.has(gKey)) rEntry.subs.set(gKey, { group: groupCat ?? null, items: [] })
+      rEntry.subs.get(gKey)!.items.push(c)
     }
-    return [...map.values()]
-  }, [selectable, categories, catQuery, t])
+    // Kök → alt grup → yaprak: her seviyeyi sort_order'a göre sırala.
+    return [...roots.values()]
+      .sort((a, b) => sortKey(a.root) - sortKey(b.root))
+      .map((r) => ({
+        root: r.root,
+        subs: [...r.subs.values()]
+          .sort((a, b) => sortKey(a.group) - sortKey(b.group))
+          .map((g) => ({ group: g.group, items: [...g.items].sort((a, b) => sortKey(a) - sortKey(b)) })),
+      }))
+  }, [selectable, categories, catQuery])
+  const hasResults = tree.some((r) => r.subs.some((g) => g.items.length > 0))
 
   const category = categories.find((c) => c.id === catId)
   const sku = category ? buildSku(category.sku_template, attrs) : ''
@@ -182,25 +204,38 @@ export function Intake() {
                 <IconSearch size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-300" />
                 <input className="input pl-10" placeholder={t('intake.choose_category')} value={catQuery} onChange={(e) => setCatQuery(e.target.value)} />
               </div>
-              <div className="max-h-[60vh] space-y-4 overflow-y-auto">
-                {groups.map((g) => (
-                  <div key={g.name}>
-                    <div className="section-title mb-1.5 flex items-center gap-1.5"><IconFolder size={13} /> {g.name}</div>
-                    <div className="grid gap-1.5 sm:grid-cols-2">
-                      {g.items.map((c) => (
-                        <button key={c.id} onClick={() => pickCategory(c.id)}
-                          className="flex items-center justify-between rounded-lg border border-line px-3 py-2.5 text-left transition-colors hover:border-accent hover:bg-accent/5">
-                          <span className="flex items-center gap-2">
-                            <span className="badge bg-brand-50 font-mono text-brand-500">{c.code}</span>
-                            <span className="text-sm font-medium text-brand-800">{c.name_tr}</span>
-                          </span>
-                          <IconChevronRight size={16} className="text-brand-300" />
-                        </button>
+              <div className="max-h-[60vh] space-y-5 overflow-y-auto">
+                {tree.map((r) => (
+                  <div key={r.root?.id ?? '__root__'}>
+                    {/* Kök başlığı — ör. Elektronik */}
+                    <div className="mb-2 flex items-center gap-1.5 border-b border-line pb-1 text-sm font-bold text-brand-800">
+                      <IconFolder size={14} /> {r.root?.name_tr ?? t('intake.group_other')}
+                    </div>
+                    <div className="space-y-3 pl-1">
+                      {r.subs.map((g) => (
+                        <div key={g.group?.id ?? '__direct__'}>
+                          {/* Ara grup başlığı — ör. Pasif (yalnızca varsa) */}
+                          {g.group && (
+                            <div className="section-title mb-1.5">{g.group.name_tr}</div>
+                          )}
+                          <div className="grid gap-1.5 sm:grid-cols-2">
+                            {g.items.map((c) => (
+                              <button key={c.id} onClick={() => pickCategory(c.id)}
+                                className="flex items-center justify-between rounded-lg border border-line px-3 py-2.5 text-left transition-colors hover:border-accent hover:bg-accent/5">
+                                <span className="flex items-center gap-2">
+                                  <span className="badge bg-brand-50 font-mono text-brand-500">{c.code}</span>
+                                  <span className="text-sm font-medium text-brand-800">{c.name_tr}</span>
+                                </span>
+                                <IconChevronRight size={16} className="text-brand-300" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
                 ))}
-                {groups.length === 0 && <p className="py-8 text-center text-brand-400">{t('search.no_results')}</p>}
+                {!hasResults && <p className="py-8 text-center text-brand-400">{t('search.no_results')}</p>}
               </div>
             </div>
           )}

@@ -4,19 +4,28 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 
 ---
 
-## 2026-07-16 · Kategori ağacı yeniden yapılandırma (11 ana dal)
+## 2026-07-16 · Kategori ağacı → tam 3 kademeli (Kök > Alt grup > Yaprak)
 
-**Yapıldı:** Kullanıcının verdiği 11 ana dala göre kategori ağacı sıfırdan, alan-uzmanı
-çok-ajanlı tasarım + eleştirmen denetimiyle (29 bulgu uygulandı) yeniden kuruldu:
-Elektrik · Elektronik (Pasif/Yarıiletken/Modül ara gruplu) · Elektromekanik · Mekanik
-(Bağlantı/Hareket ara gruplu) · Ev Elektroniği · 3D Baskı · Alet & Ekipman (El/Elektrikli)
-· Sarf (Kimyasal/Aşındırıcı) · Çeyiz & Züccaciye · Sağlık (KKD dahil, SKT özniteliği)
-· Diğer. **151 kategori** (11 kök + 9 ara grup + 131 yaprak, tümü zengin öznitelik
-şemalı + SKU şablonlu). 70 mevcut kodun UUID'si KORUNDU (parça bağları kopmaz;
-R/C/L/D/Q tek-harf kodlar bilinçli istisna — mevcut SKU'lar R-… biçiminde).
-`db/seed.sql` yenilendi; mevcut kurulum için `db/migrations/005_category_tree.sql`
-(idempotent: hepsini soft-delete → yeni ağacı upsert/dirilt → yetim parçaları serbest
-bırak). Uygulama kodu DEĞİŞMEDİ; migration sonrası cihazlarda çıkış→giriş gerekir.
+**Yapıldı:** Kategori ağacı, kullanıcının isteğiyle TÜM ana dallarda **tek biçim 3
+kademeye** çekildi: `Elektronik > Pasif > Direnç`, `Elektronik > Yarıiletken > Diyot`
+gibi. Her 11 kökün altına anlamlı ara gruplar tanımlandı (ör. ELK: Tesisat &
+Anahtarlama / Aydınlatma / Bağlantı & Aksesuar; MEK: Bağlantı / Hareket / Sızdırmazlık;
+ALT: El aleti / Elektrikli / Ölçüm…). **173 kategori** = 11 kök + **31 ara grup** +
+**131 yaprak** (tümü zengin öznitelik şeması + SKU şablonlu, `default_count_mode`
+köküyle uyumlu). **71 mevcut kodun UUID'si KORUNDU** (parça↔kategori bağları kopmaz;
+R/C/L/D/Q tek-harf kodlar bilinçli istisna — eski SKU'lar R-… biçiminde).
+
+- **Parça Ekle seçici (`Intake.tsx`):** artık gerçek 3 kademe gösteriyor — kalın **kök
+  başlığı** (ör. Elektronik) → **ara grup başlığı** (ör. Pasif) → yaprak düğme ızgarası.
+  Önceki hâlde ara grup (Pasif Bileşenler) yanlışlıkla en üst başlık oluyordu. Yaprakları
+  köke ve ara gruba göre iki kademede toplayan `tree` useMemo + sort_order sıralı.
+- **Ayarlar (`CategoriesSection.tsx`):** zaten özyinelemeli (`Row` depth+1) — 3+ kademe
+  doğru çiziliyor; üst-kategori seçici döngü korumalı. Ek değişiklik gerekmedi, doğrulandı.
+- `db/seed.sql` yenilendi; mevcut kurulum için `db/migrations/005_category_tree.sql`
+  (idempotent: hepsini soft-delete → yeni ağacı upsert/dirilt → yetim parçaları serbest
+  bırak). Migration sonrası her cihazda uygulamada **çıkış→giriş** gerekir (yeni ağaç iner).
+
+**Test:** E2E **150/150** · PHP **57+27** · tsc/build temiz.
 
 ---
 
