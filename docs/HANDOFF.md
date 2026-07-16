@@ -4,6 +4,23 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 
 ---
 
+## 2026-07-16 · Bozuk kategori ağacı (hayalet kayıt) — temiz yeniden indirme
+
+**Sorun:** Kategori ağacı yeniden yapılandırılıp migration uygulandıktan sonra, cihaz
+ÇIKIŞ/GİRİŞ yapmadan yalnızca artımlı senkron yaptıysa: eski (soft-delete) + yeni
+kategoriler istemcide karışıyordu → seçicide "2 Diğer", alt-grup kök gibi görünüyor,
+bazı yapraklar (ör. Mıknatıs) grubunu kaybediyordu. Kök: `applyBootstrap` `bulkPut`
+ile BİRLEŞTİRİYOR, yereli temizlemiyordu; artımlı pull da eski kayıtları silmiyordu.
+
+**Yapıldı:**
+- `applyBootstrap` artık yazımdan önce katalog+türetilmiş tabloları TEMİZLER
+  (bootstrap = sunucunun tam görüntüsü; hayalet kayıt kalmaz).
+- Ayarlar → Senkronizasyon'a **"Sunucudan yenile (temiz indir)"** butonu: yereli silip
+  sıfırdan bootstrap eder (`resyncFromServer` + `sync`). Bekleyen işlem varsa engellenir.
+- Kullanıcı için anında çözüm: **çıkış → giriş** (zaten `wipeLocalData` + temiz bootstrap).
+
+---
+
 ## 2026-07-16 · Cila turu: belirgin başlık, alfabetik listeler, kısa kod, TR karakter
 
 **Yapıldı (kullanıcı geri bildirimi):**

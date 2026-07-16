@@ -7,6 +7,7 @@ import { api, ApiError } from '../../sync/api'
 import { useSyncStatus } from '../../sync/useSync'
 import { useOutboxCount } from '../../db/queries'
 import { engine } from '../../sync/engine'
+import { resyncFromServer } from '../../sync/apply'
 import { getSyncErrors, clearSyncErrors, type SyncErrorLog } from '../../sync/outbox'
 import { formatDateTime } from '../../lib/format'
 import { useToast } from '../Toast'
@@ -38,7 +39,26 @@ export function SystemSection() {
   const partCount = useLiveQuery(() => db.parts.filter((p) => !p.deleted_at).count(), [], 0)
   const locCount = useLiveQuery(() => db.locations.filter((l) => !l.deleted_at).count(), [], 0)
   const [savingPrecise, setSavingPrecise] = useState(false)
+  const [resyncing, setResyncing] = useState(false)
   const preciseCount = !!auth?.tenant.settings?.precise_count
+
+  // Sunucudan temiz yeniden indirme: yereli SİL, sıfırdan bootstrap et.
+  // Kategori/konum ağacı değiştiğinde eski+yeni karışırsa (hayalet kayıtlar) düzeltir.
+  async function resync() {
+    if (!status.online) { toast.show(t('settings.sync.resync_offline'), 'error'); return }
+    if (pending > 0) { toast.show(t('settings.sync.resync_pending', { n: pending }), 'error'); return }
+    if (!confirm(t('settings.sync.resync_confirm'))) return
+    setResyncing(true)
+    try {
+      await resyncFromServer() // yerel katalog+türetilmiş tabloları temizler, cursor sıfırlar
+      await engine.sync()      // sıfırdan bootstrap + ilk pull
+      toast.show(t('settings.sync.resync_done'), 'success')
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.message : t('settings.sync.resync_fail'), 'error')
+    } finally {
+      setResyncing(false)
+    }
+  }
 
   async function togglePrecise(next: boolean) {
     setSavingPrecise(true)
@@ -86,6 +106,12 @@ export function SystemSection() {
         <button onClick={() => void engine.sync()} disabled={!status.online} className="btn-navy mt-3 w-full">
           <IconSync size={17} className={status.syncing ? 'animate-spin' : ''} /> {t('settings.sync.force')}
         </button>
+        {/* Temiz yeniden indirme — ağaç bozuk/eski görünüyorsa (hayalet kayıt) */}
+        <button onClick={() => void resync()} disabled={!status.online || resyncing || pending > 0}
+          className="btn-ghost mt-2 w-full text-sm">
+          <IconDatabase size={16} className={resyncing ? 'animate-pulse' : ''} /> {t('settings.sync.resync')}
+        </button>
+        <p className="mt-1 text-center text-xs text-brand-300">{t('settings.sync.resync_hint')}</p>
         {errors.length > 0 && (
           <div className="mt-4">
             <div className="section-title mb-1 text-red-600">{t('settings.sync.errors')}</div>

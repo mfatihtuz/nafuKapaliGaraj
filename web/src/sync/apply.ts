@@ -109,6 +109,10 @@ export async function applyChanges(result: PullResult): Promise<void> {
 
 export async function applyBootstrap(result: BootstrapResult): Promise<void> {
   await db.transaction('rw', [db.parts, db.locations, db.categories, db.stock, db.transactions], async () => {
+    // Önce temizle: bootstrap sunucunun TAM görüntüsüdür. bulkPut ile birleştirmek,
+    // sunucuda artık olmayan/eski kayıtları (ör. yeniden yapılandırılmış kategori ağacı
+    // sonrası hayalet alt-gruplar) yerelde bırakır → "2 Diğer" gibi bozuk ağaç. Temizle+yaz.
+    await Promise.all([db.parts.clear(), db.locations.clear(), db.categories.clear(), db.stock.clear(), db.transactions.clear()])
     await db.categories.bulkPut(result.categories.map(mapCategory))
     await db.locations.bulkPut(result.locations.map(mapLocation))
     await db.parts.bulkPut(result.parts.map(mapPart))

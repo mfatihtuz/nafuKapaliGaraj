@@ -322,6 +322,13 @@
       "pending": "Bekleyen işlem",
       "last": "Son eşitleme",
       "force": "Şimdi eşitle",
+      "resync": "Sunucudan yenile (temiz indir)",
+      "resync_hint": "Kategori/konum ağacı eski veya bozuk görünüyorsa kullanın — yereli silip sunucudan sıfırdan indirir.",
+      "resync_confirm": "Yerel kopya silinip sunucudan yeniden indirilecek. Bekleyen işlem yoksa veri kaybı olmaz. Devam edilsin mi?",
+      "resync_offline": "Çevrimdışısınız — önce internete bağlanın.",
+      "resync_pending": "{n} bekleyen işlem var. Önce eşitlenmesini bekleyin.",
+      "resync_done": "Sunucudan yeniden indirildi.",
+      "resync_fail": "Yeniden indirme başarısız.",
       "errors": "Eşitleme hataları",
       "clear": "Temizle"
     },
