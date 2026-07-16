@@ -223,6 +223,7 @@
     <g id="i-info"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></g>
     <g id="i-bulb"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></g>
     <g id="i-list"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></g>
+    <g id="i-upload"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M12 3v13M7 8l5-5 5 5"/></g>
   </defs>
 </svg>
 
@@ -370,6 +371,18 @@
       </ol>
       <div class="callout tip"><span class="ci"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-bulb"/></svg></span>
         <div><b>Acele etme:</b> Önce ~100 parçayı gerçekten gir ve birkaç gün kullan. Hangi özelliğin sana lazım olduğunu en iyi kullanım gösterir.</div>
+      </div>
+
+      <div class="card">
+        <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="g"><use href="#i-upload"/></svg> Elinde liste varsa: CSV ile toplu ekle <span class="phase done">Yeni</span></h3>
+        <p>Parçaların zaten Excel'de/bir listede duruyorsa tek tek girmene gerek yok. <b>Ayarlar → İçe Aktar</b>'dan yüzlerce parçayı bir kerede ekle.</p>
+        <ol class="steps">
+          <li><b>Örnek şablon indir</b>'e bas — hazır başlıklı bir CSV iner. Kendi listeni bu düzene getir.</li>
+          <li>Listeyi <b>yapıştır</b> ya da <b>.csv dosyası yükle.</b> (Excel'den "CSV olarak kaydet" yeterli.)</li>
+          <li>DEPO her satırı kontrol eder: <b>geçerli</b> ve <b>hatalı</b> satırları önizlemede gösterir (örn. "kategori bulunamadı", "SKU zaten var").</li>
+          <li><b>İçe aktar</b>'a bas — yalnızca geçerli satırlar eklenir. Miktar + konum yazdıysan başlangıç stoğu da girilir.</li>
+        </ol>
+        <p class="small">Sütunlar (hepsi zorunlu değil): <span class="code">ad</span>, <span class="code">kategori</span>, <span class="code">sku</span>, <span class="code">sayim</span>, <span class="code">birim</span>, <span class="code">min</span>, <span class="code">adet</span>, <span class="code">doluluk</span>, <span class="code">konum</span>, <span class="code">uretici</span>, <span class="code">mpn</span>, <span class="code">not</span>. SKU boş bırakırsan addan otomatik üretilir.</p>
       </div>
     </section>
 
@@ -656,7 +669,7 @@
 <footer>
   <div class="in">
     <span>DEPO — Atölye Envanteri · <b>Kullanım Kılavuzu</b></span>
-    <span class="muted">Kapsam: FAZ 1 + FAZ 2 · FAZ'lar eklendikçe güncellenir.</span>
+    <span class="muted">Kapsam: FAZ 1 + FAZ 2 + CSV içe aktarma · FAZ'lar eklendikçe güncellenir.</span>
     <a class="backtop" href="#baslarken">↑ Başa dön</a>
   </div>
 </footer>
