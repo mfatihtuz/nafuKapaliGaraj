@@ -11,8 +11,9 @@ DirectoryIndex index.html
     # private/ klasörüne HTTP erişimini engelle (yedek — private/.htaccess de var)
     RewriteRule ^private/ - [F,L]
 
-    # API istekleri → front controller
-    RewriteRule ^api/ index.php [L,QSA]
+    # API istekleri → front controller (ve API_REQ ortam değişkeniyle işaretle:
+    # aşağıda bu isteklere no-store başlığı basılır — bayat bootstrap/pull önlenir)
+    RewriteRule ^api/ index.php [L,QSA,E=API_REQ:1]
 
     # Gerçek dosya/dizin varsa doğrudan sun (assets, ikonlar, manifest, sw.js…)
     RewriteCond %{REQUEST_FILENAME} -f [OR]
@@ -28,6 +29,10 @@ DirectoryIndex index.html
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-Frame-Options "SAMEORIGIN"
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    # API yanıtları ASLA cache'lenmesin (PHP başlığına ek Apache güvencesi).
+    # Bayat /api/sync/bootstrap yanıtı çıkış/giriş sonrası eski ağacı döndürüyordu.
+    Header always set Cache-Control "no-store, no-cache, must-revalidate, max-age=0" env=API_REQ
+    Header always set Pragma "no-cache" env=API_REQ
 </IfModule>
 
 # --- Sıkıştırma (bootstrap/pull JSON büyük olabilir; ~%80 küçülür) ---
