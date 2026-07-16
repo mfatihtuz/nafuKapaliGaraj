@@ -1087,6 +1087,38 @@ await sect('U-shopping', {}, async ({ page, pageErrors }) => {
   check('U5 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ V. CSV TOPLU İÇE AKTARMA (Ayarlar → İçe Aktar) ════════════════════════
+await sect('V-import', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'settings', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'İçe Aktar', exact: true }).click(); await page.waitForTimeout(300)
+  // 2 geçerli (yeni direnç exact+stok, yeni lehim doluluk+dolu) + 2 hatalı (yok kategori, çakışan SKU)
+  const csv = [
+    'ad;kategori;sku;sayim;birim;min;adet;doluluk;konum',
+    'Yeni Direnç 22R;Direnç;;miktarlı;adet;10;150;;D1',
+    'Yeni Lehim;Muhtelif;;doluluk;;;;dolu;D2',
+    'Hatalı Kategori;YokKategori;;miktarlı;adet;;5;;D1',
+    'Çakışan;Direnç;R-10K-0805;miktarlı;adet;;3;;D1',
+  ].join('\n')
+  await page.locator('textarea').first().fill(csv); await page.waitForTimeout(400)
+  const preview = await bodyText(page)
+  check('V1 önizleme 2 geçerli sayar', preview.includes('2 geçerli'), preview.slice(0, 120))
+  check('V2 önizleme 2 hatalı sayar (yok kategori + çakışan SKU)', preview.includes('2 hatalı'))
+  check('V3 çakışan SKU hatası görünür', /SKU zaten var/i.test(preview))
+  await page.getByRole('button', { name: /parçayı içe aktar/ }).click(); await page.waitForTimeout(900)
+  const parts = await dexie(page, 'parts')
+  const yd = parts.find((p) => p.name === 'Yeni Direnç 22R')
+  const yl = parts.find((p) => p.name === 'Yeni Lehim')
+  check('V4 geçerli parçalar Dexie\'ye yazıldı', !!yd && !!yl, `yd=${!!yd} yl=${!!yl}`)
+  check('V5 exact parça kategori+min+üretilen SKU aldı', yd?.category_id === 'cat-r' && yd?.min_qty === 10 && !!yd?.sku, JSON.stringify({ c: yd?.category_id, m: yd?.min_qty, s: yd?.sku }))
+  check('V6 hatalı satırlar içe aktarılmadı', !parts.some((p) => p.name === 'Hatalı Kategori') && !parts.some((p) => p.name === 'Çakışan'))
+  const stock = await dexie(page, 'stock')
+  const ydStock = stock.find((s) => s.part_id === yd?.id && s.location_id === 'd1')
+  const ylStock = stock.find((s) => s.part_id === yl?.id && s.location_id === 'd2')
+  check('V7 exact başlangıç stoğu D1\'de 150', Number(ydStock?.qty) === 150, `qty=${ydStock?.qty}`)
+  check('V8 doluluk başlangıç stoğu D2\'de DOLU', ylStock?.level === 'full', `lvl=${ylStock?.level}`)
+  check('V9 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ---------------------------------------------------------------------------
 await browser.close()
 const fails = results.filter((r) => !r.ok)

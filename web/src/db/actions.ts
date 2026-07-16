@@ -65,6 +65,39 @@ export async function saveLocationsBulk(rows: Location[]): Promise<void> {
   engine.schedule()
 }
 
+/**
+ * Toplu parça içe aktarma (CSV). Parça satırları + upsert op'ları TEK Dexie
+ * transaction'ında (atomik, sıra korunur → parça op'u stoktan önce push edilir),
+ * sonra istenen başlangıç stoğu (miktar/doluluk) uygulanır. Tek sync tetiği.
+ * Parçalar bileşende hazır kurulur (id, sku, tags, buildTags ile) → burada yalnız yazılır.
+ */
+export interface ImportItem {
+  part: Part
+  stock?: { locationId: string; delta?: number; level?: StockLevel }
+}
+export async function importPartsBulk(items: ImportItem[]): Promise<number> {
+  if (items.length === 0) return 0
+  const ts = nowIso()
+  const parts: Part[] = items.map((it) => ({ ...it.part, updated_at: ts }))
+  const ops: OutboxOp[] = parts.map((p) => ({
+    op_id: uuidv7(), type: 'upsert', entity: 'part', data: p, created_at: Date.now(), attempts: 0,
+  }))
+  await db.transaction('rw', db.parts, db.outbox, async () => {
+    await db.parts.bulkPut(parts)
+    await db.outbox.bulkAdd(ops) // ++seq: parça önce, stok sonra
+  })
+  // Başlangıç stoğu (defter) — moveStock/setLevel applyTx + enqueue yapar.
+  for (const it of items) {
+    if (!it.stock) continue
+    if (it.stock.level) await setLevel(it.part.id, it.stock.locationId, it.stock.level, 'İçe aktarma')
+    else if (it.stock.delta && it.stock.delta !== 0) {
+      await moveStock({ partId: it.part.id, locationId: it.stock.locationId, delta: it.stock.delta, reason: 'initial' })
+    }
+  }
+  engine.schedule()
+  return items.length
+}
+
 export async function softDeletePart(id: string): Promise<void> {
   const ts = nowIso()
   const local = await db.parts.get(id)

@@ -3,7 +3,7 @@ import { AppHeader, Container } from '../components/Layout'
 import { useAuth } from '../auth/AuthContext'
 import { useT } from '../i18n'
 import {
-  IconUser, IconKey, IconUsers, IconBuilding, IconFolder, IconBox, IconTag, IconSliders, IconLogout,
+  IconUser, IconKey, IconUsers, IconBuilding, IconFolder, IconBox, IconTag, IconSliders, IconLogout, IconUpload,
 } from '../components/icons'
 import { AccountSection } from '../components/settings/AccountSection'
 import { SecuritySection } from '../components/settings/SecuritySection'
@@ -13,6 +13,7 @@ import { LabelsSection } from '../components/settings/LabelsSection'
 import { CategoriesSection } from '../components/settings/CategoriesSection'
 import { LocationsSection } from '../components/settings/LocationsSection'
 import { SystemSection } from '../components/settings/SystemSection'
+import { ImportSection } from '../components/settings/ImportSection'
 
 interface Section {
   key: string
@@ -27,6 +28,7 @@ const SECTIONS: Section[] = [
   { key: 'org', Icon: IconBuilding, owner: true },
   { key: 'categories', Icon: IconFolder },
   { key: 'locations', Icon: IconBox },
+  { key: 'import', Icon: IconUpload },
   { key: 'labels', Icon: IconTag, owner: true },
   { key: 'system', Icon: IconSliders },
 ]
@@ -48,6 +50,7 @@ export function Settings() {
       case 'labels': return <LabelsSection />
       case 'categories': return <CategoriesSection canWrite={canWrite} />
       case 'locations': return <LocationsSection canWrite={canWrite} />
+      case 'import': return <ImportSection canWrite={canWrite} />
       case 'system': return <SystemSection />
       default: return null
     }

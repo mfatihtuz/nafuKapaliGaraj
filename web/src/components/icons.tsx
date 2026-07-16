@@ -58,6 +58,9 @@ export const IconCart = (p: P) => (
 export const IconImageOff = (p: P) => (
   <svg {...base(p)}><path d="M10.4 4H19a2 2 0 0 1 2 2v8.6M21 21H5a2 2 0 0 1-2-2V6M2 2l20 20M8.5 8.5 3 21" /></svg>
 )
+export const IconUpload = (p: P) => (
+  <svg {...base(p)}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M12 3v13M7 8l5-5 5 5" /></svg>
+)
 export const IconSparkle = (p: P) => (
   <svg {...base(p)}><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" /></svg>
 )
