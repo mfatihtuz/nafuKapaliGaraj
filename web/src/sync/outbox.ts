@@ -26,7 +26,7 @@ export interface SyncErrorLog {
 /** Bir op'u kuyruğa yaz. op_id verilmezse üretilir. seq otomatik atanır (kararlı sıra). */
 export async function enqueue(input: {
   type: OutboxType
-  entity?: 'part' | 'location' | 'category'
+  entity?: OutboxOp['entity']
   data: unknown
   op_id?: string
 }): Promise<void> {

@@ -7,6 +7,36 @@
     "labels": "Etiket",
     "settings": "Ayarlar"
   },
+  "photos": {
+    "title": "Fotoğraflar",
+    "drawer_title": "Çekmece fotoğrafı",
+    "add": "Fotoğraf ekle",
+    "adding": "Ekleniyor…",
+    "empty": "Henüz fotoğraf yok",
+    "pending": "Yüklenecek",
+    "view": "Görüntüle",
+    "add_error": "Fotoğraf eklenemedi"
+  },
+  "shopping": {
+    "title": "Eksikler / Alışveriş",
+    "subtitle": "Minimum stok altına düşen ve tükenen parçalar",
+    "empty": "Eksik parça yok — her şey yeterli 👍",
+    "copy": "Panoya kopyala",
+    "copied": "Kopyalandı",
+    "copy_error": "Kopyalanamadı",
+    "open": "Eksikler listesi",
+    "have_min": "eldeki {have}, min {min}",
+    "out": "BİTTİ",
+    "count": "{n} eksik kalem"
+  },
+  "ai": {
+    "button": "Fotoğraftan tanı (AI)",
+    "identifying": "Tanınıyor…",
+    "disabled_hint": "AI tanıma kapalı — sunucuda anahtar tanımlanınca açılır.",
+    "error": "AI tanıma başarısız",
+    "no_result": "Öneri çıkmadı — elle doldurabilirsin.",
+    "applied": "Öneri forma uygulandı ({conf})"
+  },
   "common": {
     "save": "Kaydet",
     "cancel": "Vazgeç",

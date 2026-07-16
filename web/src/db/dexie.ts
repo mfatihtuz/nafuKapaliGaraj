@@ -3,6 +3,7 @@
 import Dexie, { type Table } from 'dexie'
 import type {
   Part, Location, Category, Stock, Transaction, OutboxOp, MetaRow, AuthState, TenantInfo,
+  Attachment, PendingUpload,
 } from './types'
 
 export class DepoDB extends Dexie {
@@ -13,6 +14,8 @@ export class DepoDB extends Dexie {
   transactions!: Table<Transaction, string>
   outbox!: Table<OutboxOp, string>
   meta!: Table<MetaRow, string>
+  attachments!: Table<Attachment, string> // senkronlanan ek METADATA (blob yok)
+  uploads!: Table<PendingUpload, string>   // giden yükleme kuyruğu (blob YEREL)
 
   constructor() {
     super('depo')
@@ -26,6 +29,18 @@ export class DepoDB extends Dexie {
       // yeniden sıralanıp sunucuda "parça yok" reddine yol açmasın).
       outbox: '++seq, &op_id, created_at',
       meta: 'key',
+    })
+    // v2 (FAZ 2.1): foto/PDF ekleri. attachments = senkron metadata; uploads = giden blob kuyruğu.
+    this.version(2).stores({
+      parts: 'id, sku, category_id, count_mode, updated_at, deleted_at',
+      locations: 'id, code, parent_id, type, sort_order, updated_at',
+      categories: 'id, code, parent_id, sort_order, updated_at',
+      stock: 'key, part_id, location_id',
+      transactions: 'id, part_id, location_id, created_at',
+      outbox: '++seq, &op_id, created_at',
+      meta: 'key',
+      attachments: 'id, [owner_type+owner_id], owner_id, sha256, updated_at, deleted_at',
+      uploads: 'id, [owner_type+owner_id], owner_id, created_at',
     })
   }
 }
@@ -71,5 +86,6 @@ export async function wipeLocalData(): Promise<void> {
   await Promise.all([
     db.parts.clear(), db.locations.clear(), db.categories.clear(),
     db.stock.clear(), db.transactions.clear(), db.outbox.clear(), db.meta.clear(),
+    db.attachments.clear(), db.uploads.clear(),
   ])
 }

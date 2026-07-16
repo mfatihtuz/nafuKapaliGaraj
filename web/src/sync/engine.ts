@@ -6,6 +6,7 @@ import { api, ApiError } from './api'
 import { applyBootstrap, applyChanges, resyncFromServer } from './apply'
 import { localStockChecksum } from './checksum'
 import { pendingCount, pushOutbox, logSyncEvent } from './outbox'
+import { flushUploads } from './uploads'
 
 export interface SyncStatus {
   online: boolean
@@ -106,9 +107,11 @@ class SyncEngine {
       await this.ensureBootstrap()
       await this.pullAll() // pull
       const pushed = await this.pushWithLock() // push (sekmeler-arası tek push)
-      // 2. pull YALNIZCA sunucu bir şey uyguladıysa (kendi yazdıklarımızı geri çek).
-      // Boşta/başarısız push'ta bu turu atla → gereksiz ağ turu yok (istek sayısı yarıya iner).
-      if (pushed.applied > 0) await this.pullAll()
+      // Bekleyen foto/PDF yüklemelerini boşalt (ikili — JSON push'tan ayrı, çok-parçalı).
+      const up = await flushUploads()
+      // 2. pull YALNIZCA sunucu bir şey uyguladıysa (kendi yazdıklarımızı + yeni ek
+      // metadata'sını geri çek). Boşta/başarısız push'ta bu turu atla → gereksiz ağ turu yok.
+      if (pushed.applied > 0 || up.uploaded > 0) await this.pullAll()
       await this.verifyChecksum() // self-heal: sessiz stok kaymasını yakala
       this.emit({ lastSyncAt: Date.now(), lastError: null, authExpired: false })
     } catch (err) {

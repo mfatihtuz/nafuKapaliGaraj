@@ -17,6 +17,7 @@ import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
 import { IconEdit, IconTrash, IconCheck, IconMoveArrow } from '../components/icons'
 import { LocationPicker, resolveLeaf } from '../components/LocationPicker'
+import { PhotoGallery } from '../components/PhotoGallery'
 
 const MODES: CountMode[] = ['exact', 'level', 'unmanaged']
 
@@ -349,6 +350,11 @@ export function PartDetail() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Fotoğraflar (FAZ 2.1) */}
+        <div className="mb-3">
+          <PhotoGallery ownerType="part" ownerId={part.id} canWrite={canWrite} />
         </div>
 
         {/* Hareket geçmişi */}

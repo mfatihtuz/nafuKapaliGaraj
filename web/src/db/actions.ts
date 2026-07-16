@@ -2,12 +2,16 @@
 // UI asla doğrudan API'ye yazmaz (ARCHITECTURE §1, SYNC_PROTOCOL §5.4).
 
 import { db } from './dexie'
-import type { Part, Location, Category, Stock, StockLevel, TxReason, Transaction, OutboxOp } from './types'
+import type {
+  Part, Location, Category, Stock, StockLevel, TxReason, Transaction, OutboxOp,
+  AttachmentOwnerType, AttachmentKind, PendingUpload,
+} from './types'
 import { uuidv7 } from '../lib/uuid'
 import { nowIso } from '../lib/format'
 import { enqueue } from '../sync/outbox'
 import { applyTx } from '../sync/derive'
 import { engine } from '../sync/engine'
+import { downscaleImage, sha256Hex } from '../lib/image'
 
 // --- Katalog (LWW) ----------------------------------------------------------
 
@@ -218,5 +222,64 @@ export async function auditStock(
       created_at: nowIso(),
     },
   })
+  engine.schedule()
+}
+
+// --- Ekler (FAZ 2.1 — foto/PDF) ---------------------------------------------
+
+/**
+ * Foto/PDF ekle (offline-first): foto istemcide ~1600px JPEG'e küçültülür, sha256
+ * hesaplanır, `uploads` kuyruğuna (blob YEREL) yazılır ve sync tetiklenir. Online
+ * olunca flushUploads sunucuya iletir; sunucu metadata'sı attachments'a düşer.
+ * UI ekleneni ANINDA görür (kuyruk kaydından object URL).
+ */
+export async function addAttachment(
+  ownerType: AttachmentOwnerType,
+  ownerId: string,
+  file: File | Blob,
+  originalName?: string,
+): Promise<void> {
+  const isPdf = (file.type || '') === 'application/pdf'
+  let blob: Blob = file
+  let width: number | null = null
+  let height: number | null = null
+  let kind: AttachmentKind = 'pdf'
+  if (!isPdf) {
+    const proc = await downscaleImage(file)
+    blob = proc.blob
+    width = proc.width
+    height = proc.height
+    kind = 'photo'
+  }
+  const sha = await sha256Hex(blob)
+  const up: PendingUpload = {
+    id: uuidv7(),
+    owner_type: ownerType,
+    owner_id: ownerId,
+    kind,
+    filename: (originalName || (file as File).name || (isPdf ? 'belge.pdf' : 'foto.jpg')).slice(0, 255),
+    mime: isPdf ? 'application/pdf' : 'image/jpeg',
+    sha256: sha,
+    blob,
+    width,
+    height,
+    created_at: Date.now(),
+    attempts: 0,
+  }
+  await db.uploads.add(up)
+  engine.schedule()
+}
+
+/** Henüz yüklenmemiş (kuyruktaki) bir eki iptal et — yalnızca yerel. */
+export async function cancelPendingUpload(id: string): Promise<void> {
+  await db.uploads.delete(id)
+}
+
+/** Yüklenmiş bir eki sil: yerel soft-delete + sunucuya delete push (çevrimdışı-uyumlu). */
+export async function deleteAttachment(id: string): Promise<void> {
+  const ts = nowIso()
+  const local = await db.attachments.get(id)
+  if (local) await db.attachments.put({ ...local, deleted_at: ts, updated_at: ts })
+  await enqueue({ type: 'delete', entity: 'attachment', data: { id, updated_at: ts } })
   engine.schedule()
 }

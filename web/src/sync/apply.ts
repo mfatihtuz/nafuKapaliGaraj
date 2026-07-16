@@ -2,7 +2,10 @@
 // Katalog: LWW (updated_at). Defter: applyTx (idempotent, stok türetilir).
 
 import { db, setCursor, metaSet, TENANT_KEY, BOOTSTRAPPED } from '../db/dexie'
-import type { Part, Location, Category, AbcClass, CountMode, LocationType, AttributeDef } from '../db/types'
+import type {
+  Part, Location, Category, AbcClass, CountMode, LocationType, AttributeDef,
+  Attachment, AttachmentKind, AttachmentOwnerType,
+} from '../db/types'
 import { tsToMs } from '../lib/format'
 import type { BootstrapResult, PullResult } from './api'
 import { applyTx, mapTx, storeTxOnly, putSnapshotRow } from './derive'
@@ -68,6 +71,25 @@ function mapCategory(p: Record<string, unknown>): Category {
   }
 }
 
+/** Ek metadata (blob YOK — storage_path/thumb_path sunucu-içi, istemciye alınmaz). */
+export function mapAttachment(p: Record<string, unknown>): Attachment {
+  return {
+    id: String(p.id),
+    owner_type: (p.owner_type as AttachmentOwnerType) ?? 'part',
+    owner_id: String(p.owner_id ?? ''),
+    kind: (p.kind as AttachmentKind) ?? 'photo',
+    filename: String(p.filename ?? ''),
+    mime: String(p.mime ?? ''),
+    size_bytes: n(p.size_bytes) ?? 0,
+    sha256: String(p.sha256 ?? ''),
+    width: n(p.width),
+    height: n(p.height),
+    sort_order: n(p.sort_order) ?? 0,
+    updated_at: String(p.updated_at ?? ''),
+    deleted_at: (p.deleted_at as string | null) ?? null,
+  }
+}
+
 // --- LWW upsert (yerel) -----------------------------------------------------
 
 async function lwwPut<T extends { id: string; updated_at: string }>(
@@ -94,6 +116,9 @@ export async function applyChanges(result: PullResult): Promise<void> {
       case 'category':
         await lwwPut(db.categories, mapCategory(ch.payload))
         break
+      case 'attachment':
+        await lwwPut(db.attachments, mapAttachment(ch.payload))
+        break
       case 'stock_transaction':
         await applyTx(mapTx(ch.payload))
         break
@@ -108,14 +133,16 @@ export async function applyChanges(result: PullResult): Promise<void> {
 // --- bootstrap (ilk kurulum) ------------------------------------------------
 
 export async function applyBootstrap(result: BootstrapResult): Promise<void> {
-  await db.transaction('rw', [db.parts, db.locations, db.categories, db.stock, db.transactions], async () => {
+  await db.transaction('rw', [db.parts, db.locations, db.categories, db.stock, db.transactions, db.attachments], async () => {
     // Önce temizle: bootstrap sunucunun TAM görüntüsüdür. bulkPut ile birleştirmek,
     // sunucuda artık olmayan/eski kayıtları (ör. yeniden yapılandırılmış kategori ağacı
     // sonrası hayalet alt-gruplar) yerelde bırakır → "2 Diğer" gibi bozuk ağaç. Temizle+yaz.
-    await Promise.all([db.parts.clear(), db.locations.clear(), db.categories.clear(), db.stock.clear(), db.transactions.clear()])
+    // NOT: uploads (giden yükleme kuyruğu) TEMİZLENMEZ — outbox gibi yerel bekleyen iştir.
+    await Promise.all([db.parts.clear(), db.locations.clear(), db.categories.clear(), db.stock.clear(), db.transactions.clear(), db.attachments.clear()])
     await db.categories.bulkPut(result.categories.map(mapCategory))
     await db.locations.bulkPut(result.locations.map(mapLocation))
     await db.parts.bulkPut(result.parts.map(mapPart))
+    await db.attachments.bulkPut((result.attachments ?? []).map(mapAttachment))
 
     // Snapshot yetkilidir → stok buradan; geçmiş tx yalnızca kayıt olarak saklanır.
     for (const s of result.stock_snapshot) {
@@ -138,10 +165,10 @@ export async function applyBootstrap(result: BootstrapResult): Promise<void> {
  * bulkPut yerine önce clear: sunucuda artık olmayan (hayalet) satırlar da silinir.
  */
 export async function resyncFromServer(): Promise<void> {
-  await db.transaction('rw', [db.parts, db.locations, db.categories, db.stock, db.transactions], async () => {
+  await db.transaction('rw', [db.parts, db.locations, db.categories, db.stock, db.transactions, db.attachments], async () => {
     await Promise.all([
       db.parts.clear(), db.locations.clear(), db.categories.clear(),
-      db.stock.clear(), db.transactions.clear(),
+      db.stock.clear(), db.transactions.clear(), db.attachments.clear(),
     ])
   })
   await metaSet(BOOTSTRAPPED, false)

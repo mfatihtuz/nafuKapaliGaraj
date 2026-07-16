@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AppHeader, Container } from '../components/Layout'
 import { useCategories, useLocations } from '../db/queries'
@@ -15,8 +15,10 @@ import { levelLabel, unitLabel } from '../lib/format'
 import { useT } from '../i18n'
 import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
-import { IconCheck, IconChevronRight, IconBack, IconSearch, IconFolder, IconEdit } from '../components/icons'
+import { IconCheck, IconChevronRight, IconBack, IconSearch, IconFolder, IconEdit, IconSparkle } from '../components/icons'
 import { CategoryEditModal } from '../components/settings/CategoryEditor'
+import { api } from '../sync/api'
+import { downscaleImage, blobToBase64 } from '../lib/image'
 
 const LEVELS: StockLevel[] = ['full', 'low', 'empty']
 
@@ -65,6 +67,46 @@ export function Intake() {
   const [serial, setSerial] = useState(true)
   const [busy, setBusy] = useState(false)
   const [editCat, setEditCat] = useState(false)
+  const [aiEnabled, setAiEnabled] = useState(false)
+  const [aiBusy, setAiBusy] = useState(false)
+  const aiInputRef = useRef<HTMLInputElement>(null)
+
+  // AI tanıma açık mı? (anahtar yoksa sunucu 200 + disabled döner — hata değil.)
+  useEffect(() => {
+    api.aiStatus().then((s) => setAiEnabled(s.ai_enabled)).catch(() => setAiEnabled(false))
+  }, [])
+
+  /** Fotoğraftan öznitelik önerisi al ve formu ön-doldur (FAZ 2.3). */
+  async function onAiPhoto(file: File | undefined): Promise<void> {
+    if (!file || !category) return
+    if (!aiEnabled) { toast.show(t('ai.disabled_hint'), 'error'); return }
+    setAiBusy(true)
+    try {
+      const { blob } = await downscaleImage(file, 1024, 0.8)
+      const res = await api.aiIdentify(await blobToBase64(blob), 'image/jpeg')
+      if (!res.ai_enabled) { toast.show(t('ai.disabled_hint'), 'error'); return }
+      const s = res.suggestion
+      if (!s) { toast.show(t('ai.no_result'), 'error'); return }
+      if (typeof s.name === 'string' && s.name.trim()) setName(s.name.trim())
+      const schemaKeys = new Set((category.attribute_schema ?? []).map((a) => a.key))
+      const sug = s.attributes
+      if (sug && typeof sug === 'object') {
+        setAttrs((prev) => {
+          const next = { ...prev }
+          for (const [k, v] of Object.entries(sug as Record<string, unknown>)) {
+            if (schemaKeys.has(k) && (typeof v === 'string' || typeof v === 'number')) next[k] = v
+          }
+          return next
+        })
+      }
+      const conf = typeof s.confidence === 'number' ? `${Math.round(s.confidence * 100)}%` : '?'
+      toast.show(t('ai.applied', { conf }), 'success')
+    } catch {
+      toast.show(t('ai.error'), 'error')
+    } finally {
+      setAiBusy(false)
+    }
+  }
 
   const selectable = useMemo(() => categories.filter((c) => c.sku_template), [categories])
   // Üç kademeli ağaç: KÖK (ör. Elektronik) → ALT GRUP (ör. Pasif) → YAPRAK (ör. Direnç).
@@ -259,6 +301,21 @@ export function Intake() {
                 )}
               </div>
               {editCat && <CategoryEditModal initial={category} onClose={() => setEditCat(false)} />}
+
+              {/* Fotoğraftan tanı (AI, FAZ 2.3) — anahtar yoksa nazik uyarı. */}
+              {canWrite && (
+                <>
+                  <input ref={aiInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; void onAiPhoto(f) }} />
+                  <button type="button" disabled={aiBusy}
+                    onClick={() => (aiEnabled ? aiInputRef.current?.click() : toast.show(t('ai.disabled_hint'), 'error'))}
+                    className={`mb-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm ${
+                      aiEnabled ? 'border-accent text-brand-700 hover:bg-accent/5' : 'border-line text-brand-300'
+                    }`}>
+                    <IconSparkle size={15} /> {aiBusy ? t('ai.identifying') : t('ai.button')}
+                  </button>
+                </>
+              )}
 
               {category.attribute_schema && category.attribute_schema.length > 0 && (
                 <AttributeForm schema={category.attribute_schema} values={attrs} onChange={(k, v) => setAttrs((a) => ({ ...a, [k]: v }))} />

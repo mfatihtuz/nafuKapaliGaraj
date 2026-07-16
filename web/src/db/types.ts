@@ -106,12 +106,57 @@ export interface OutboxOp {
   seq?: number // ++auto-increment — kuyruk sırasını KARARLI tutar (Date.now() eşitliklerine karşı)
   op_id: string
   type: OutboxType
-  entity?: 'part' | 'location' | 'category'
+  entity?: 'part' | 'location' | 'category' | 'attachment'
   data: unknown
   created_at: number
   attempts: number
   last_error?: string
   last_attempt_at?: number // son gerçek deneme zamanı (üstel bekleme için)
+}
+
+// --- Ekler (FAZ 2.1 — foto/PDF) --------------------------------------------
+
+export type AttachmentKind = 'photo' | 'pdf'
+export type AttachmentOwnerType = 'part' | 'location'
+
+/**
+ * Ek METADATA'sı — senkronlanan katalog varlığı (LWW). İkili (blob) BURADA yok:
+ * yüklenmiş ekin baytı sunucudan <img src="/api/files/:id?thumb=1"> ile gelir
+ * (immutable cache → offline'da da açılır). Kendi yeni çektiğin foto ise
+ * sunucuya iletilene dek `uploads` tablosunda (PendingUpload) tutulur.
+ */
+export interface Attachment {
+  id: string
+  owner_type: AttachmentOwnerType
+  owner_id: string
+  kind: AttachmentKind
+  filename: string
+  mime: string
+  size_bytes: number
+  sha256: string
+  width: number | null
+  height: number | null
+  sort_order: number
+  updated_at: string
+  deleted_at: string | null
+}
+
+/** Giden yükleme kuyruğu — blob YALNIZCA sunucuya iletilene dek yerelde tutulur. */
+export interface PendingUpload {
+  id: string // yerel geçici id (uuidv7)
+  owner_type: AttachmentOwnerType
+  owner_id: string
+  kind: AttachmentKind
+  filename: string
+  mime: string
+  sha256: string
+  blob: Blob
+  width: number | null
+  height: number | null
+  created_at: number
+  attempts: number
+  last_error?: string
+  last_attempt_at?: number
 }
 
 export interface MetaRow {

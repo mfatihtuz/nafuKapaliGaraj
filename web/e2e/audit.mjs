@@ -12,6 +12,30 @@
 import { chromium } from 'playwright-core'
 import { writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { deflateSync } from 'node:zlib'
+
+/** Geçerli, çözülebilir bir PNG üret (WxH düz renk) — headless Chromium 1x1 kırık
+ *  base64'ü decode ETMEZ; gerçek foto akışını test etmek için sağlam bir görsel gerek. */
+function makePngB64(w = 8, h = 8) {
+  const crc32 = (buf) => {
+    let c = ~0
+    for (let i = 0; i < buf.length; i++) { c ^= buf[i]; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xEDB88320 & -(c & 1)) }
+    return (~c) >>> 0
+  }
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length)
+    const td = Buffer.concat([Buffer.from(type, 'ascii'), data])
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td))
+    return Buffer.concat([len, td, crc])
+  }
+  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2 // 8-bit RGB
+  const row = Buffer.concat([Buffer.from([0]), Buffer.concat(Array.from({ length: w }, () => Buffer.from([220, 40, 40])))])
+  const raw = Buffer.concat(Array.from({ length: h }, () => row))
+  const png = Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
+  return png.toString('base64')
+}
 
 /** Sunucu SyncService::stockChecksum ile BİREBİR aynı kanonik özet (self-heal testi). */
 function serverChecksum(rows) {
@@ -646,8 +670,15 @@ await sect('I-offline', {
   check('I1 API tamamen kapalıyken stok işlemi yerelde çalışır', stI?.qty === 52, `qty=${stI?.qty}`)
   const outI = await dexie(page, 'outbox')
   check('I2 işlemler outbox\'ta bekliyor (revert YOK)', outI.length >= 2, `outbox=${outI.length}`)
-  const badge = await bodyText(page)
-  check('I3 durum rozeti bekleyeni/çevrimdışını gösterir', /bekliyor|Çevrimdışı|Eşitleme/i.test(badge))
+  // Rozet, geçici "Eşitleniyor" anını yakalayıp yanıltmasın diye kararlı bir duruma
+  // (bekliyor/çevrimdışı/eşitleme sorunu) oturana kadar en fazla ~4 sn bekle.
+  let badge = ''
+  for (let i = 0; i < 20; i++) {
+    badge = await bodyText(page)
+    if (/bekliyor|Çevrimdışı|Eşitleme sorunu/i.test(badge)) break
+    await page.waitForTimeout(200)
+  }
+  check('I3 durum rozeti bekleyeni/çevrimdışını gösterir', /bekliyor|Çevrimdışı|Eşitleme sorunu/i.test(badge))
   check('I4 sayfa hatası yok (ağ kesintisi crash etmedi)', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
@@ -1007,6 +1038,48 @@ await sect('R3-cascade-mismatch', {}, async ({ page, pageErrors }) => {
   check('R3.1 önek uyuşmayan çocuklar TEK adımda SB105-01/02/70 oldu', md1?.code === 'SB105-01' && md2?.code === 'SB105-02' && md3?.code === 'SB105-70', `${md1?.code},${md2?.code},${md3?.code}`)
   check('R3.2 alt path GARAJ/SB105/SB105-01', md1?.path === 'GARAJ/SB105/SB105-01', `path=${md1?.path}`)
   check('R3.3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ T. FOTOĞRAF EKLE (FAZ 2.1) ═══════════════════════════════════════════
+await sect('T-photos', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'parts/p-r', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  check('T1 foto galeri kartı görünür (boş durum)', (await bodyText(page)).includes('Fotoğraf'))
+  // Geçerli 8x8 PNG → gizli foto input'una ver (addAttachment: küçült + sha256 + kuyruk)
+  const png = Buffer.from(makePngB64(8, 8), 'base64')
+  const input = page.locator('input[type="file"]').first()
+  await input.setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: png })
+  await page.waitForTimeout(800)
+  const ups = await dexie(page, 'uploads')
+  check('T2 foto → bekleyen yükleme kuyruğa girdi (owner=p-r)', ups.length >= 1 && ups.some((u) => u.owner_id === 'p-r' && u.owner_type === 'part'))
+  check('T3 bekleyen foto sha256 + blob taşıyor', ups[0] && typeof ups[0].sha256 === 'string' && ups[0].sha256.length === 64 && !!ups[0].blob)
+  check('T4 galeride "Yüklenecek" rozeti göründü', (await bodyText(page)).includes('Yüklenecek'))
+  check('T5 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ U. EKSİK / ALIŞVERİŞ LİSTESİ (FAZ 2.4) ════════════════════════════════
+await sect('U-shopping', {}, async ({ page, pageErrors }) => {
+  // Eksik senaryosu: min_qty=10 ama toplam 2 (exact) + doluluk tümü BİTTİ
+  await page.evaluate(async ({ NOW }) => {
+    const put = (store, rows) => new Promise((res, rej) => {
+      const o = indexedDB.open('depo')
+      o.onsuccess = () => { const dbx = o.result; const tx = dbx.transaction(store, 'readwrite'); rows.forEach((r) => tx.objectStore(store).put(r)); tx.oncomplete = () => { dbx.close(); res() }; tx.onerror = () => rej(tx.error) }
+    })
+    await put('parts', [
+      { id: 'sh-ex', category_id: 'cat-r', sku: 'R-SHORT', name: 'Az Kalan Direnç', mpn: null, manufacturer: null, attributes: null, tags: 'az', count_mode: 'exact', abc_class: 'C', min_qty: 10, unit: 'adet', datasheet_url: null, photo_id: null, notes: null, updated_at: NOW, deleted_at: null },
+      { id: 'sh-lv', category_id: 'cat-cam', sku: 'CAM-BITTI', name: 'Biten Cam', mpn: null, manufacturer: null, attributes: null, tags: 'bit', count_mode: 'level', abc_class: 'C', min_qty: null, unit: 'adet', datasheet_url: null, photo_id: null, notes: null, updated_at: NOW, deleted_at: null },
+    ])
+    await put('stock', [
+      { key: 'sh-ex|d1', part_id: 'sh-ex', location_id: 'd1', qty: 2, level: null, level_at: null, last_move_at: NOW },
+      { key: 'sh-lv|d2', part_id: 'sh-lv', location_id: 'd2', qty: 0, level: 'empty', level_at: NOW, last_move_at: NOW },
+    ])
+  }, { NOW })
+  await page.goto(BASE + 'shopping', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  const txt = await bodyText(page)
+  check('U1 min altı parça listelendi (R-SHORT)', txt.includes('Az Kalan Direnç') && txt.includes('R-SHORT'))
+  check('U2 tükenmiş doluluk parçası listelendi (BİTTİ)', txt.includes('Biten Cam') && txt.includes('BİTTİ'))
+  check('U3 yeterli/min-siz parça listelenmez', !txt.includes('10K Direnç'))
+  check('U4 panoya kopyala düğmesi var', await page.getByRole('button', { name: /Panoya kopyala/ }).isVisible().catch(() => false))
+  check('U5 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
 // ---------------------------------------------------------------------------

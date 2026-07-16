@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AppHeader, Container } from '../components/Layout'
-import { useSearch, useCategories, useLocations, type SearchHit } from '../db/queries'
+import { useSearch, useCategories, useLocations, useFirstPhoto, type SearchHit } from '../db/queries'
 import type { Category, Location, Part, Stock } from '../db/types'
 import { levelLabel, unitLabel, formatQty } from '../lib/format'
 import { useT } from '../i18n'
-import { IconSearch } from '../components/icons'
+import { IconSearch, IconCart } from '../components/icons'
+import { AttachmentImage } from '../components/AttachmentImage'
 
 function StockPill({ part, stock }: { part: Part; stock: Stock }) {
   const { t } = useT()
@@ -21,21 +22,36 @@ function StockPill({ part, stock }: { part: Part; stock: Stock }) {
   return null
 }
 
+function PartThumb({ partId }: { partId: string }) {
+  const photo = useFirstPhoto('part', partId)
+  if (!photo || (!photo.attId && !photo.pendingBlob)) return null
+  return (
+    <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-line bg-brand-50">
+      <AttachmentImage attId={photo.attId} blob={photo.pendingBlob} thumb className="h-full w-full object-cover" />
+    </div>
+  )
+}
+
 function ResultCard({ hit }: { hit: SearchHit }) {
   const { t } = useT()
   const { part, places, categoryName } = hit
   return (
     <div className="card card-pad">
       <Link to={`/parts/${part.id}`} className="block">
-        <div className="flex items-start justify-between gap-2">
-          <div className="font-semibold text-brand-800">{part.name}</div>
-          {/* Kategori (grup) belirgin: gri satır yerine chip */}
-          {categoryName && (
-            <span className="chip shrink-0 bg-brand-50 px-2 py-0.5 text-[11px] text-brand-500">{categoryName}</span>
-          )}
-        </div>
-        <div className="text-xs text-brand-400">
-          <span className="font-mono">{part.sku}</span>
+        <div className="flex items-start gap-3">
+          <PartThumb partId={part.id} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="font-semibold text-brand-800">{part.name}</div>
+              {/* Kategori (grup) belirgin: gri satır yerine chip */}
+              {categoryName && (
+                <span className="chip shrink-0 bg-brand-50 px-2 py-0.5 text-[11px] text-brand-500">{categoryName}</span>
+              )}
+            </div>
+            <div className="text-xs text-brand-400">
+              <span className="font-mono">{part.sku}</span>
+            </div>
+          </div>
         </div>
       </Link>
 
@@ -109,7 +125,12 @@ export function Search() {
 
   return (
     <>
-      <AppHeader title={t('nav.search')} />
+      <AppHeader title={t('nav.search')} right={
+        <Link to="/shopping" title={t('shopping.open')} aria-label={t('shopping.open')}
+          className="btn-icon h-9 w-9 text-brand-600 hover:bg-brand-50">
+          <IconCart size={20} />
+        </Link>
+      } />
       <Container>
         <div className="sticky top-14 z-10 -mx-4 mb-3 border-b border-line bg-canvas/95 px-4 pb-3 pt-2 backdrop-blur">
           <div className="flex flex-col gap-2 sm:flex-row">

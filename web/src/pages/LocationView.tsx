@@ -5,6 +5,7 @@ import { StockControl } from '../components/StockControl'
 import { useT } from '../i18n'
 import { useAuth } from '../auth/AuthContext'
 import { IconPlus, IconChevronRight, IconFolder } from '../components/icons'
+import { PhotoGallery } from '../components/PhotoGallery'
 
 const SYSTEM_TYPES = ['intake', 'bench', 'quarantine', 'loan', 'project']
 
@@ -61,6 +62,13 @@ export function LocationView() {
             <span className="chip bg-brand-50 text-brand-500">{t('location.system')}</span>
           )}
         </div>
+
+        {/* Çekmece fotoğrafı (FAZ 2.2) — yalnızca yaprak (grup/sistem değil) konumda */}
+        {!isGroup && !isSystem && (
+          <div className="mb-4">
+            <PhotoGallery ownerType="location" ownerId={location.id} canWrite={canWrite} title={t('photos.drawer_title')} />
+          </div>
+        )}
 
         {/* Grup konumu (dolap/modül): alt konumları listele — "boş çekmece" yanılgısı olmasın */}
         {isGroup ? (

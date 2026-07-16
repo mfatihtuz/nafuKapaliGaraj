@@ -72,10 +72,45 @@ export interface BootstrapResult {
   categories: Record<string, unknown>[]
   locations: Record<string, unknown>[]
   parts: Record<string, unknown>[]
+  attachments: Record<string, unknown>[]
   stock_snapshot: Record<string, unknown>[]
   stock_transactions: Record<string, unknown>[]
   cursor: number
   server_time: string
+}
+
+/** Multipart yükleme — JSON request()'ten ayrı (boundary'yi tarayıcı koyar). */
+async function uploadForm<T>(path: string, form: FormData): Promise<T> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 60000) // yükleme daha uzun sürebilir
+  let res: Response
+  try {
+    res = await fetch(API_BASE + path, {
+      method: 'POST', credentials: 'include', cache: 'no-store', body: form, signal: ctrl.signal,
+    })
+  } catch (e) {
+    const aborted = e instanceof DOMException && e.name === 'AbortError'
+    throw new ApiError(0, aborted ? 'timeout' : 'network', aborted ? 'Yükleme zaman aşımı' : 'Ağ hatası')
+  } finally {
+    clearTimeout(timer)
+  }
+  const text = await res.text()
+  let json: unknown = {}
+  if (text) {
+    try { json = JSON.parse(text) } catch { throw new ApiError(res.status, 'bad_response', 'Sunucudan beklenmeyen yanıt') }
+  }
+  if (!res.ok) {
+    const o = json as { error?: string; message?: string }
+    throw new ApiError(res.status, o.error ?? 'error', o.message ?? res.statusText)
+  }
+  return json as T
+}
+
+export interface AiStatus { ai_enabled: boolean; mpn_enabled: boolean }
+export interface AiIdentifyResult {
+  ai_enabled: boolean
+  reason?: string
+  suggestion?: Record<string, unknown> | null
 }
 
 export interface OrgUser {
@@ -120,4 +155,19 @@ export const api = {
   renameOrg: (name: string) => request<{ tenant: { id: string; name: string } }>('POST', '/org/rename', { name }),
   updateOrgSettings: (settings: Record<string, unknown>) =>
     request<{ settings: Record<string, unknown> }>('POST', '/org/settings', { settings }),
+
+  // Ekler (FAZ 2.1) — ikili yükleme (multipart). Meta döner → Dexie'ye yazılır.
+  uploadAttachment: (ownerType: string, ownerId: string, blob: Blob, filename: string) => {
+    const form = new FormData()
+    form.append('owner_type', ownerType)
+    form.append('owner_id', ownerId)
+    form.append('file', blob, filename)
+    return uploadForm<Record<string, unknown>>('/files', form)
+  },
+
+  // AI tanıma (FAZ 2.3) + MPN (2.5) — kapalıysa 200 + disabled döner.
+  aiStatus: () => request<AiStatus>('GET', '/ai/status'),
+  aiIdentify: (image_base64: string, media_type: string) =>
+    request<AiIdentifyResult>('POST', '/ai/identify', { image_base64, media_type }),
+  mpnLookup: (mpn: string) => request<{ mpn_enabled: boolean; results?: unknown[] }>('GET', `/lookup/mpn?mpn=${encodeURIComponent(mpn)}`),
 }
