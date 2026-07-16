@@ -18,7 +18,8 @@ CREATE TEMPORARY TABLE cat_seed (
   sku_template VARCHAR(190) NULL,
   default_count_mode VARCHAR(16) NOT NULL,
   attribute_schema LONGTEXT NULL,
-  sort_order INT NOT NULL
+  sort_order INT NOT NULL,
+  existing_id CHAR(36) NULL
 ) CHARACTER SET utf8mb4;
 
 INSERT INTO cat_seed (code, parent_code, name_tr, name_en, sku_template, default_count_mode, attribute_schema, sort_order) VALUES
@@ -200,14 +201,18 @@ INSERT INTO cat_seed (code, parent_code, name_tr, name_en, sku_template, default
 UPDATE categories SET deleted_at=@now, updated_at=@now
  WHERE tenant_id=@tenant AND deleted_at IS NULL;
 
--- 2) Mevcut kodları GÜNCELLE+DİRİLT (id KORUNUR → parça bağı sağlam), yeni kodları EKLE.
---    parent_id şimdilik NULL; 3. adımda KOD ile bağlanır.
+-- 2a) Mevcut kategorilerin id'sini KOD ile geçici tabloya taşı (categories OKUNUR, temp YAZILIR).
+--     Böylece 2b'deki INSERT categories'i FROM'da kullanmaz (MariaDB 'table specified twice' 1093 hatası önlenir).
+UPDATE cat_seed s JOIN categories ex ON ex.tenant_id=@tenant AND ex.code=s.code
+   SET s.existing_id = ex.id;
+
+-- 2b) Kodları GÜNCELLE+DİRİLT (mevcut id KORUNUR → parça bağı sağlam), yeni kodları EKLE.
+--     parent_id şimdilik NULL; 3. adımda KOD ile bağlanır. Kaynak YALNIZCA cat_seed.
 INSERT INTO categories
   (id, tenant_id, parent_id, code, name_tr, name_en, sku_template, default_count_mode, attribute_schema, sort_order, updated_at, deleted_at)
-SELECT COALESCE(ex.id, UUID()), @tenant, NULL, s.code, s.name_tr, s.name_en, s.sku_template,
+SELECT COALESCE(s.existing_id, UUID()), @tenant, NULL, s.code, s.name_tr, s.name_en, s.sku_template,
        s.default_count_mode, s.attribute_schema, s.sort_order, @now, NULL
   FROM cat_seed s
-  LEFT JOIN categories ex ON ex.tenant_id=@tenant AND ex.code=s.code
 ON DUPLICATE KEY UPDATE
   name_tr=VALUES(name_tr), name_en=VALUES(name_en), sku_template=VALUES(sku_template),
   default_count_mode=VALUES(default_count_mode), attribute_schema=VALUES(attribute_schema),
