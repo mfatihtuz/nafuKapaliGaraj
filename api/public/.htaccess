@@ -31,8 +31,12 @@ DirectoryIndex index.html
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
     # API yanıtları ASLA cache'lenmesin (PHP başlığına ek Apache güvencesi).
     # Bayat /api/sync/bootstrap yanıtı çıkış/giriş sonrası eski ağacı döndürüyordu.
+    # mod_rewrite dahili yönlendirmesi env'i REDIRECT_ önekiyle yeniden adlandırır;
+    # her iki adı da kapsa (yoksa başlık sessizce basılmayabilir).
     Header always set Cache-Control "no-store, no-cache, must-revalidate, max-age=0" env=API_REQ
     Header always set Pragma "no-cache" env=API_REQ
+    Header always set Cache-Control "no-store, no-cache, must-revalidate, max-age=0" env=REDIRECT_API_REQ
+    Header always set Pragma "no-cache" env=REDIRECT_API_REQ
 </IfModule>
 
 # --- Sıkıştırma (bootstrap/pull JSON büyük olabilir; ~%80 küçülür) ---

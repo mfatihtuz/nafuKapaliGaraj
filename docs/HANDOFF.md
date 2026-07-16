@@ -4,6 +4,28 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 
 ---
 
+## 2026-07-16 · KRİTİK 2: Sunucu ağacı bozuktu (127 yetim) — UUID'siz onarım
+
+**Kök neden (gerçek DB dökümünden kanıtlandı):** Kullanıcının canlı DB'sinde 173 aktif
+kategori / 11 kök vardı AMA **127'si yetimdi** — parent_id'leri var olmayan UUID'lere
+işaret ediyordu; kodlar hâlâ eski (XTAL). Sebep migration 005 tasarım hatası:
+`ON DUPLICATE KEY UPDATE ... parent_id=VALUES(parent_id)` sabit UUID'e güveniyor.
+DB'deki mevcut kategori UUID'leri migration'dakinden farklıysa, (tenant,code) çakışması
+mevcut satırın id'sini KORUR ama parent_id'yi migration'ın (var olmayan) YENİ UUID'ine
+set eder → toplu yetimleşme.
+
+**Çözüm — `db/migrations/006_category_repair.sql` (UUID'den BAĞIMSIZ):**
+Geçici tabloya (code, parent_code) yükle → mevcutları KODA göre güncelle/dirilt (id
+korunur) → **parent_id'yi KOD join'i ile bağla**. DB'deki UUID durumu ne olursa olsun
+doğru ağacı garanti eder. İdempotent. Gerçek bozuk veriye karşı SİMÜLE edildi:
+ÖNCE 127 yetim → SONRA 0 yetim, 11 kök, {11 kök / 31 ara / 131 yaprak}, XTAL→OSC.
+SQLite ile SQL+JSON geçerliliği doğrulandı. (Üretici: scratchpad/gen_robust_migration.py)
+
+**Not:** Migration 005 (sabit-UUID) artık 006 ile ikame edildi; ileride migration'lar
+kod-join yöntemiyle üretilmeli.
+
+---
+
 ## 2026-07-16 · KRİTİK: API yanıtları önbelleğe alınıyordu (bayat bootstrap)
 
 **Kök neden (kesin):** API yanıtları `Cache-Control` başlığı GÖNDERMİYORDU. Bootstrap
