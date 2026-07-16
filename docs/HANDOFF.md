@@ -4,6 +4,50 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 
 ---
 
+## 2026-07-16 · FAZ 2 TAMAMLANDI — ekler/foto, AI tanıma, eksik liste, MPN
+
+**Kapsam (tümü çalışır + test edildi):**
+- **2.1/2.2 Foto/PDF ekleri** — parça + konum. Offline-first: foto istemcide ~1600px
+  JPEG'e küçültülür (canvas), sha256, `uploads` (yerel blob kuyruğu) → online olunca
+  `flushUploads` multipart yükler, `attachments` (senkronlu LWW metadata) düşer. Sunucu:
+  GD ile 1600px main + 320px thumb, EXIF strip, sha256 byte-dedup (tek disk kopyası),
+  finfo gerçek-mime, webroot-dışı `private/storage`. UI: `PhotoGallery` (kamera/galeri,
+  bekleyen+yüklenmiş önizleme, tam ekran, sil), arama kartı + parça/konum thumbnail.
+- **2.3 AI tanıma** — Intake'te fotoğraftan öneri (ad/özellik doldurur; SKU'yu istemci
+  üretir). Sunucu-tarafı Anthropic proxy; anahtar YALNIZCA `config['ai']['api_key']`,
+  frontend'e ASLA gitmez. Anahtar yoksa tüm uçlar 200+disabled (nazik degradasyon).
+- **2.4 Eksik/alışveriş listesi** — min stok altı (toplam) + tükenen doluluk; kategoriye
+  göre grupla, panoya kopyala. `/shopping`.
+- **2.5 MPN** — `api.mpnLookup` iskeleti (sağlayıcı erişimi canlıda anahtar girilince).
+
+**DB:** `db/migrations/007_attachments.sql` (attachments final şema — owner_type ENUM,
+kind photo/pdf, width/height, sort_order, updated_at LWW, sha256 NON-UNIQUE index).
+schema.sql güncel. Kullanıcı phpMyAdmin→SQL'e yapıştırıp çalıştırmalı.
+
+**config.php:** `storage` (path + limitler) + `ai` bloğu (varsayılan kapalı) eklendi.
+
+**Adversarial inceleme (UltraCode, 5 boyut + bağımsız doğrulama):** 12 gerçek bulgu
+bulundu ve düzeltildi; her biri için regresyon testi:
+- **KRİTİK path-traversal/LFI:** attachment sync-push ile `storage_path` ezilip fileFor
+  üzerinden `private/config.php` (DB parolası + Anthropic anahtarı) / çapraz-tenant dosya
+  okunabiliyordu. Düzeltme (2 kat): sync'te attachment UPSERT reddi (metadata yalnız
+  sunucu store()) + fileFor realpath containment.
+- Yüksek: PDF stored-XSS → Content-Disposition: attachment; idempotent yükleme (istemci
+  id = PK); GD piksel bombası (40 MP tavan, tek-decode).
+- Orta: flushUploads cross-tab lock; iptal yarışı; img onError + /api/files SW cache;
+  yetim dosya (sahip doğrulaması diske yazmadan önce).
+- Düşük: kalıcı-hata rozeti; sha dedup; ?thumb boolean.
+
+**Testler:** PHP 115 (attachment 31, http 27, sync 57), E2E 164 — HEPSİ YEŞİL.
+tsc strict + build temiz. Commit'ler: `0a5bb66` (backend), `1090730` (frontend),
+`81c8a35` (güvenlik düzeltmeleri).
+
+**Bilinen sınır / bilinçli:** Aynı foto FARKLI cihazlardan farklı up.id ile eklenirse
+sunucuda iki metadata satırı olabilir (disk baytı tek kopya); istemci-içi sha dedup tek
+cihazda çifti önler. MPN sağlayıcı entegrasyonu (LCSC/Nexar) canlıda anahtar bekliyor.
+
+---
+
 ## 2026-07-16 · FAZ 2 başladı — Parça Ekle'de "Kategoriyi düzenle" pop-up
 
 **Karar:** prefix/suffix ŞİMDİLİK eklenmiyor (değeri kompakt yaz: 10K/12V). Gerçek
