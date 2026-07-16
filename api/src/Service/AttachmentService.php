@@ -23,6 +23,10 @@ final class AttachmentService
     private const MAIN_EDGE = 1600;   // ana görüntü en uzun kenar
     private const THUMB_EDGE = 320;   // önizleme en uzun kenar
     private const JPEG_Q = 82;
+    // Decode ÖNCESİ piksel tavanı: bayt sınırı (10MB) piksel sayısını bağlamaz;
+    // 10MB'lık bir JPEG 40-50 MP olabilir ve GD truecolor tamponu ~piksel*4 bayt
+    // ister (48MP≈192MB) → paylaşımlı hostingde memory_limit fatal'ı (yakalanamaz).
+    private const MAX_PIXELS = 40_000_000; // 40 MP
 
     private AttachmentRepository $repo;
     private ChangeLogRepository $changeLog;
@@ -64,9 +68,12 @@ final class AttachmentService
 
     /**
      * Ham dosya baytlarını doğrular, işler, depolar ve metadata satırı + change_log yazar.
+     * @param string|null $clientId İstemcinin PendingUpload.id'si (varsa). Attachment PK'sı
+     *   olarak kullanılır → aynı yüklemenin tekrarı (timeout/reload sonrası) İDEMPOTENT
+     *   olur (lwwUpsert yerinde günceller, ikinci satır oluşmaz).
      * @return array<string,mixed> kanonik attachment satırı (istemci Dexie'ye yazar)
      */
-    public function store(string $ownerType, string $ownerId, string $bytes, string $originalName): array
+    public function store(string $ownerType, string $ownerId, string $bytes, string $originalName, ?string $clientId = null): array
     {
         if (!in_array($ownerType, ['part', 'location'], true)) {
             throw HttpException::unprocessable('Geçersiz owner_type');
@@ -76,6 +83,16 @@ final class AttachmentService
         }
         if ($bytes === '') {
             throw HttpException::badRequest('Boş dosya');
+        }
+        // Sahip DOĞRULAMASI diske yazmadan ÖNCE (yetim dosya savunması): sahip parça/konum
+        // bu tenant'ta VAR olmalı. Aksi hâlde geçerli bir foto çapraz-tenant owner_id ile
+        // yollanıp disk dolduramaz (dosya yazıldıktan sonra lwwUpsert reddederse rollback
+        // DB'yi geri alır ama diski değil). Bkz. inceleme bulgusu #9.
+        $this->assertOwnerOwned($ownerType, $ownerId);
+
+        // İstemci id'si verildiyse geçerli UUID olmalı (idempotency anahtarı, PK).
+        if ($clientId !== null && $clientId !== '' && !Uuid::isValid($clientId)) {
+            throw HttpException::unprocessable('Geçersiz ek id');
         }
 
         // GERÇEK mime (istemci type'ı değil).
@@ -90,11 +107,22 @@ final class AttachmentService
             throw HttpException::unprocessable('Dosya çok büyük');
         }
 
+        // Foto için piksel tavanını DECODE'dan önce uygula (memory_limit bombası savunması).
+        if ($kind === 'photo') {
+            $dim = @getimagesizefromstring($bytes);
+            if ($dim === false) {
+                throw HttpException::unprocessable('Görsel çözümlenemedi');
+            }
+            if ((int) $dim[0] * (int) $dim[1] > self::MAX_PIXELS) {
+                throw HttpException::unprocessable('Görsel çözünürlüğü çok yüksek (en fazla 40 MP)');
+            }
+        }
+
         $sha = hash('sha256', $bytes);
         $ext = $kind === 'pdf' ? '.pdf' : '.jpg';
 
         // Metadata + depolama tek transaction'da (row + change_log tutarlı).
-        return $this->db->transaction(function () use ($ownerType, $ownerId, $kind, $mime, $sha, $ext, $bytes, $originalName): array {
+        return $this->db->transaction(function () use ($ownerType, $ownerId, $kind, $mime, $sha, $ext, $bytes, $originalName, $clientId): array {
             $width = null;
             $height = null;
             $storeMime = $mime;
@@ -102,12 +130,14 @@ final class AttachmentService
             $thumbBytes = null;
 
             if ($kind === 'photo') {
-                $main = $this->processImage($bytes, self::MAIN_EDGE);
-                $mainBytes = $main['bytes'];
-                $width = $main['width'];
-                $height = $main['height'];
+                // TEK decode: main üretilir, thumb main'in KÜÇÜLTÜLMÜŞ resource'undan türetilir
+                // (orijinali ikinci kez decode etmez → tepe bellek katlanmaz — bulgu #5).
+                $pair = $this->processPhoto($bytes);
+                $mainBytes = $pair['main'];
+                $width = $pair['width'];
+                $height = $pair['height'];
+                $thumbBytes = $pair['thumb'];
                 $storeMime = 'image/jpeg';
-                $thumbBytes = $this->processImage($bytes, self::THUMB_EDGE)['bytes'];
             }
 
             // Bayt-dedup: aynı sha daha önce yüklendiyse dosyayı YENİDEN yazma.
@@ -130,7 +160,8 @@ final class AttachmentService
             $sort = $this->repo->maxSortOrder($ownerType, $ownerId) + 10;
             $now = \Depo\Support\Time::now();
             $data = [
-                'id'           => Uuid::v7(),
+                // İstemci id'si (idempotency) yoksa sunucu üretir.
+                'id'           => ($clientId !== null && $clientId !== '') ? $clientId : Uuid::v7(),
                 'owner_type'   => $ownerType,
                 'owner_id'     => $ownerId,
                 'kind'         => $kind,
@@ -151,9 +182,22 @@ final class AttachmentService
         });
     }
 
+    /** Sahip parça/konum bu tenant'ta VAR mı? (Upload öncesi katı doğrulama.) */
+    private function assertOwnerOwned(string $ownerType, string $ownerId): void
+    {
+        $table = $ownerType === 'part' ? 'parts' : 'locations';
+        $row = $this->db->one(
+            "SELECT tenant_id FROM {$table} WHERE id = :id AND deleted_at IS NULL",
+            ['id' => $ownerId]
+        );
+        if ($row === null || (string) $row['tenant_id'] !== $this->tenantId) {
+            throw HttpException::unprocessable('Ek eklenecek kayıt bulunamadı');
+        }
+    }
+
     /**
-     * İndirme için mutlak dosya yolu + mime döndürür (tenant kontrollü).
-     * @return array{path:string,mime:string,sha:string}
+     * İndirme için mutlak dosya yolu + mime döndürür (tenant kontrollü + yol-sınırlı).
+     * @return array{path:string,mime:string,sha:string,kind:string,filename:string}
      */
     public function fileFor(string $id, bool $thumb): array
     {
@@ -163,41 +207,76 @@ final class AttachmentService
         }
         $rel = $thumb && $row['thumb_path'] !== null ? (string) $row['thumb_path'] : (string) $row['storage_path'];
         $mime = $thumb && $row['thumb_path'] !== null ? 'image/jpeg' : (string) $row['mime'];
-        $abs = $this->storageBase() . '/' . $rel;
-        if (!is_file($abs)) {
+        $base = $this->storageBase();
+        $abs = $base . '/' . $rel;
+        // GÜVENLİK (kritik — bulgu #1): storage_path'in depolama kökünün DIŞINA çıkmadığını
+        // realpath ile doğrula. Savunma-derinliği: sync upsert reddi (SyncService) birincil
+        // savunma; bu ikinci kapı, kökün dışına işaret eden herhangi bir yolu (ör. '../config.php',
+        // '../../etc/passwd') hard-fail eder. realpath sembolik bağ/'..' çözer.
+        $realBase = realpath($base);
+        $realAbs = realpath($abs);
+        if ($realBase === false || $realAbs === false || !str_starts_with($realAbs, $realBase . DIRECTORY_SEPARATOR)) {
+            throw HttpException::notFound('Dosya bulunamadı');
+        }
+        if (!is_file($realAbs)) {
             throw HttpException::notFound('Dosya diskte yok');
         }
-        return ['path' => $abs, 'mime' => $mime, 'sha' => (string) $row['sha256']];
+        return ['path' => $realAbs, 'mime' => $mime, 'sha' => (string) $row['sha256'], 'kind' => (string) $row['kind'], 'filename' => (string) $row['filename']];
     }
 
     // --- iç yardımcılar -----------------------------------------------------
 
-    /** GD ile en uzun kenarı $maxEdge'e indirger, JPEG döndürür. EXIF strip'lenir. */
-    private function processImage(string $bytes, int $maxEdge): array
+    /**
+     * Fotoğrafı TEK decode ile işler: main (≤MAIN_EDGE) + thumb (≤THUMB_EDGE) JPEG üretir.
+     * Thumb, orijinali yeniden decode etmek yerine küçültülmüş main resource'undan türetilir
+     * → tepe bellek katlanmaz (bulgu #5). EXIF, yeniden kodlamayla strip'lenir.
+     * @return array{main:string,thumb:string,width:int,height:int}
+     */
+    private function processPhoto(string $bytes): array
     {
-        $img = @imagecreatefromstring($bytes);
-        if ($img === false) {
+        $src = @imagecreatefromstring($bytes);
+        if ($src === false) {
             throw HttpException::unprocessable('Görsel çözümlenemedi');
         }
+        try {
+            $main = $this->scaleToEdge($src, self::MAIN_EDGE);
+            $mainBytes = $this->encodeJpeg($main);
+            $mw = imagesx($main);
+            $mh = imagesy($main);
+            // Thumb'ı MAIN'den küçült (orijinal $src'yi tekrar kullanmadan).
+            $thumb = $this->scaleToEdge($main, self::THUMB_EDGE);
+            $thumbBytes = $this->encodeJpeg($thumb);
+            if ($thumb !== $main) {
+                imagedestroy($thumb);
+            }
+            imagedestroy($main);
+            return ['main' => $mainBytes, 'thumb' => $thumbBytes, 'width' => $mw, 'height' => $mh];
+        } finally {
+            imagedestroy($src);
+        }
+    }
+
+    /** Bir GD görüntüsünü en uzun kenarı $maxEdge olacak şekilde ölçekler (küçültme only). */
+    private function scaleToEdge(\GdImage $img, int $maxEdge): \GdImage
+    {
         $w = imagesx($img);
         $h = imagesy($img);
         $scale = min(1.0, $maxEdge / max(1, max($w, $h)));
+        if ($scale >= 1.0) {
+            return $img; // zaten yeterince küçük — aynı resource'u döndür
+        }
         $nw = max(1, (int) round($w * $scale));
         $nh = max(1, (int) round($h * $scale));
-        if ($scale < 1.0) {
-            $resized = imagescale($img, $nw, $nh);
-            if ($resized !== false) {
-                imagedestroy($img);
-                $img = $resized;
-            }
-        }
-        $nw = imagesx($img);
-        $nh = imagesy($img);
+        $resized = imagescale($img, $nw, $nh);
+        return $resized === false ? $img : $resized;
+    }
+
+    /** GD görüntüsünü JPEG bayt dizisine kodlar. */
+    private function encodeJpeg(\GdImage $img): string
+    {
         ob_start();
         imagejpeg($img, null, self::JPEG_Q);
-        $out = (string) ob_get_clean();
-        imagedestroy($img);
-        return ['bytes' => $out, 'width' => $nw, 'height' => $nh];
+        return (string) ob_get_clean();
     }
 
     private function writeFile(string $rel, string $data): void

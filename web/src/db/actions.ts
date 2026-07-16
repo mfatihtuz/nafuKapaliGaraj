@@ -238,7 +238,7 @@ export async function addAttachment(
   ownerId: string,
   file: File | Blob,
   originalName?: string,
-): Promise<void> {
+): Promise<'queued' | 'duplicate'> {
   const isPdf = (file.type || '') === 'application/pdf'
   let blob: Blob = file
   let width: number | null = null
@@ -252,6 +252,15 @@ export async function addAttachment(
     kind = 'photo'
   }
   const sha = await sha256Hex(blob)
+  // Aynı içerik (sha) bu sahibe zaten ekli/kuyruktaysa yinelemeyi atla (bulgu #11):
+  // galeride iki özdeş küçük resim oluşmasın. Farklı sahiplere aynı foto serbest.
+  const dupSynced = await db.attachments
+    .where('[owner_type+owner_id]').equals([ownerType, ownerId])
+    .filter((a) => !a.deleted_at && a.sha256 === sha).count()
+  const dupPending = await db.uploads
+    .where('[owner_type+owner_id]').equals([ownerType, ownerId])
+    .filter((u) => u.sha256 === sha).count()
+  if (dupSynced > 0 || dupPending > 0) return 'duplicate'
   const up: PendingUpload = {
     id: uuidv7(),
     owner_type: ownerType,
@@ -268,6 +277,7 @@ export async function addAttachment(
   }
   await db.uploads.add(up)
   engine.schedule()
+  return 'queued'
 }
 
 /** Henüz yüklenmemiş (kuyruktaki) bir eki iptal et — yalnızca yerel. */

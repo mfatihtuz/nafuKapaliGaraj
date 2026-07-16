@@ -157,8 +157,11 @@ export const api = {
     request<{ settings: Record<string, unknown> }>('POST', '/org/settings', { settings }),
 
   // Ekler (FAZ 2.1) — ikili yükleme (multipart). Meta döner → Dexie'ye yazılır.
-  uploadAttachment: (ownerType: string, ownerId: string, blob: Blob, filename: string) => {
+  // id: istemci PendingUpload.id'si → sunucu bunu attachment PK'sı yapar. Aynı yüklemenin
+  // tekrarı (timeout/reload sonrası) İDEMPOTENT olur; ikinci satır oluşmaz (bulgu #4).
+  uploadAttachment: (id: string, ownerType: string, ownerId: string, blob: Blob, filename: string) => {
     const form = new FormData()
+    form.append('id', id)
     form.append('owner_type', ownerType)
     form.append('owner_id', ownerId)
     form.append('file', blob, filename)

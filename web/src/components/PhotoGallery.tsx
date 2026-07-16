@@ -30,15 +30,21 @@ export function PhotoGallery({
   async function pick(files: File[]) {
     setBusy(true)
     try {
+      let dup = 0
       for (const f of files) {
-        await addAttachment(ownerType, ownerId, f)
+        if ((await addAttachment(ownerType, ownerId, f)) === 'duplicate') dup++
       }
+      if (dup > 0) toast.show(t('photos.duplicate'), 'info')
     } catch {
       toast.show(t('photos.add_error'), 'error')
     } finally {
       setBusy(false)
     }
   }
+
+  // Kalıcı olarak başarısız yükleme (deneme üst sınırına ulaşmış): 'Yüklenecek' yerine
+  // görünür hata durumu göster ki kullanıcı takıldığını anlasın (bulgu #10).
+  const FAILED_ATTEMPTS = 8
 
   const isEmpty = synced.length === 0 && pending.length === 0
 
@@ -90,24 +96,29 @@ export function PhotoGallery({
               )}
             </div>
           ))}
-          {pending.map((u) => (
-            <div key={u.id} className="relative aspect-square overflow-hidden rounded-lg border border-dashed border-accent bg-brand-50">
+          {pending.map((u) => {
+            const failed = u.attempts >= FAILED_ATTEMPTS
+            return (
+            <div key={u.id} className={`relative aspect-square overflow-hidden rounded-lg border border-dashed bg-brand-50 ${failed ? 'border-red-400' : 'border-accent'}`}>
               {u.kind === 'photo' ? (
                 <AttachmentImage blob={u.blob} className="h-full w-full object-cover opacity-70" alt={u.filename} />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-brand-300"><IconImage size={22} /></div>
               )}
-              <span className="absolute inset-x-0 bottom-0 bg-accent/90 py-0.5 text-center text-[10px] font-medium text-brand-900">
-                {t('photos.pending')}
+              <span
+                title={failed ? u.last_error : undefined}
+                className={`absolute inset-x-0 bottom-0 py-0.5 text-center text-[10px] font-medium ${failed ? 'bg-red-500/90 text-white' : 'bg-accent/90 text-brand-900'}`}>
+                {failed ? t('photos.failed') : t('photos.pending')}
               </span>
               {canWrite && (
                 <button onClick={() => void cancelPendingUpload(u.id)}
-                  className="absolute right-1 top-1 rounded-full bg-black/50 p-1 text-white" aria-label={t('common.cancel')}>
+                  className="absolute right-1 top-1 rounded-full bg-black/50 p-1 text-white" aria-label={failed ? t('common.delete') : t('common.cancel')}>
                   <IconX size={13} />
                 </button>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

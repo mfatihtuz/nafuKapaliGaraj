@@ -14,6 +14,8 @@
     "adding": "Ekleniyor…",
     "empty": "Henüz fotoğraf yok",
     "pending": "Yüklenecek",
+    "failed": "Yüklenemedi",
+    "duplicate": "Bu fotoğraf zaten ekli",
     "view": "Görüntüle",
     "add_error": "Fotoğraf eklenemedi"
   },

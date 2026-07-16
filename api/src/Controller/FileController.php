@@ -34,6 +34,8 @@ final class FileController
         }
         $ownerType = (string) $req->input('owner_type', '');
         $ownerId = (string) $req->input('owner_id', '');
+        // İstemci PendingUpload.id'si (idempotency anahtarı — bulgu #4). Yoksa sunucu üretir.
+        $clientId = (string) $req->input('id', '');
         $file = $req->file('file');
         if ($file === null) {
             throw HttpException::badRequest('Dosya alınamadı (yükleme boyutu sınırını aşmış olabilir)');
@@ -47,7 +49,7 @@ final class FileController
             throw HttpException::unprocessable('Dosya okunamadı');
         }
         $svc = new AttachmentService($this->db, $ctx->tenantId, $ctx->userId, $this->config);
-        $row = $svc->store($ownerType, $ownerId, $bytes, $file['name']);
+        $row = $svc->store($ownerType, $ownerId, $bytes, $file['name'], $clientId !== '' ? $clientId : null);
         $res->json($row, 201);
     }
 
@@ -56,7 +58,8 @@ final class FileController
         if ($ctx === null) {
             throw HttpException::unauthorized();
         }
-        $thumb = $req->query('thumb') !== null;
+        // ?thumb değeri DEĞERLENDİRİLİR (yalnızca varlığı değil): ?thumb=0 → tam boyut (bulgu #12).
+        $thumb = filter_var($req->query('thumb'), FILTER_VALIDATE_BOOLEAN);
         $svc = new AttachmentService($this->db, $ctx->tenantId, $ctx->userId, $this->config);
         $f = $svc->fileFor((string) ($params['id'] ?? ''), $thumb);
         $etag = $f['sha'] . ($thumb ? '-t' : '');
@@ -65,6 +68,9 @@ final class FileController
             $res->notModified($etag);
             return;
         }
-        $res->streamFile($f['path'], $f['mime'], $etag);
+        // Foto (JPEG, sunucuda yeniden kodlanmış) inline; PDF gibi ham türler attachment
+        // olarak indirilir (uygulama origin'inde render edilmez — XSS savunması, bulgu #3).
+        $downloadName = (!$thumb && $f['kind'] !== 'photo') ? ($f['filename'] ?: 'dosya') : null;
+        $res->streamFile($f['path'], $f['mime'], $etag, $downloadName);
     }
 }

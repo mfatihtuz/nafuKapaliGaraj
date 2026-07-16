@@ -1053,6 +1053,11 @@ await sect('T-photos', {}, async ({ page, pageErrors }) => {
   check('T2 foto → bekleyen yükleme kuyruğa girdi (owner=p-r)', ups.length >= 1 && ups.some((u) => u.owner_id === 'p-r' && u.owner_type === 'part'))
   check('T3 bekleyen foto sha256 + blob taşıyor', ups[0] && typeof ups[0].sha256 === 'string' && ups[0].sha256.length === 64 && !!ups[0].blob)
   check('T4 galeride "Yüklenecek" rozeti göründü', (await bodyText(page)).includes('Yüklenecek'))
+  // T6: aynı foto (aynı sha) tekrar eklenince YİNELENMEZ (bulgu #11 dedup).
+  await input.setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: png })
+  await page.waitForTimeout(700)
+  const ups2 = await dexie(page, 'uploads')
+  check('T6 aynı foto ikinci kez eklenince kuyruk büyümedi (sha dedup)', ups2.filter((u) => u.owner_id === 'p-r').length === 1, `n=${ups2.filter((u) => u.owner_id === 'p-r').length}`)
   check('T5 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 

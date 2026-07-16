@@ -243,6 +243,15 @@ final class SyncService
         switch ($type) {
             case 'upsert':
                 $entity = (string) ($op['entity'] ?? '');
+                // GÜVENLİK (kritik): Ek metadata'sı İSTEMCİDEN upsert edilemez. attachments
+                // satırlarını yalnızca sunucu, /api/files yükleme ucunda (AttachmentService::store)
+                // yazar — storage_path/mime/sha256 sunucu-denetimlidir. Sync push ile serbest
+                // upsert'e izin vermek istemciye storage_path'i ezdirir → path traversal /
+                // keyfi dosya okuma (private/config.php, çapraz-tenant). İstemci yalnızca DELETE
+                // push eder (aşağıdaki case). Bu yüzden attachment upsert'i burada reddedilir.
+                if ($entity === 'attachment') {
+                    throw HttpException::unprocessable('Ek metadata istemciden güncellenemez');
+                }
                 $repo = $this->catalogRepo($entity);
                 $row = $repo->lwwUpsert($data);
                 $this->changeLog->append($entity, (string) ($row['id'] ?? ''), 'upsert', $row, $this->actorId);

@@ -106,12 +106,13 @@ class SyncEngine {
     try {
       await this.ensureBootstrap()
       await this.pullAll() // pull
-      const pushed = await this.pushWithLock() // push (sekmeler-arası tek push)
-      // Bekleyen foto/PDF yüklemelerini boşalt (ikili — JSON push'tan ayrı, çok-parçalı).
-      const up = await flushUploads()
+      // push + foto/PDF flush AYNI sekmeler-arası kilit içinde (ikisi de paylaşılan outbox/
+      // uploads kuyruğuna dokunur; ayrı kilitlemek iki sekmede aynı blob'un iki kez
+      // yüklenmesine yol açardı — bulgu #6).
+      const { pushed, uploaded } = await this.pushAndFlushWithLock()
       // 2. pull YALNIZCA sunucu bir şey uyguladıysa (kendi yazdıklarımızı + yeni ek
       // metadata'sını geri çek). Boşta/başarısız push'ta bu turu atla → gereksiz ağ turu yok.
-      if (pushed.applied > 0 || up.uploaded > 0) await this.pullAll()
+      if (pushed.applied > 0 || uploaded > 0) await this.pullAll()
       await this.verifyChecksum() // self-heal: sessiz stok kaymasını yakala
       this.emit({ lastSyncAt: Date.now(), lastError: null, authExpired: false })
     } catch (err) {
@@ -161,15 +162,24 @@ class SyncEngine {
    * kapan push eder; kapamayan atlar (op'lar paylaşılan outbox'ta kalır, kayıp yok).
    * navigator.locks yoksa (eski iOS Safari / güvensiz bağlam) bugünkü davranış — regresyon yok.
    */
-  private async pushWithLock(): Promise<{ applied: number; rejected: number; sent: number }> {
+  private async pushAndFlushWithLock(): Promise<{
+    pushed: { applied: number; rejected: number; sent: number }
+    uploaded: number
+  }> {
     const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined
-    if (!locks?.request) return pushOutbox()
-    let result = { applied: 0, rejected: 0, sent: 0 }
+    if (!locks?.request) {
+      const pushed = await pushOutbox()
+      const up = await flushUploads()
+      return { pushed, uploaded: up.uploaded }
+    }
+    let pushed = { applied: 0, rejected: 0, sent: 0 }
+    let uploaded = 0
     await locks.request('depo-outbox-push', { ifAvailable: true }, async (lock) => {
-      if (!lock) return // başka sekme zaten boşaltıyor → atla
-      result = await pushOutbox()
+      if (!lock) return // başka sekme zaten boşaltıyor → atla (JSON push + ikili flush birlikte)
+      pushed = await pushOutbox()
+      uploaded = (await flushUploads()).uploaded
     })
-    return result
+    return { pushed, uploaded }
   }
 
   private async pullAll(): Promise<void> {

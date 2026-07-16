@@ -46,8 +46,13 @@ final class Response
     /**
      * İkili dosya (foto/PDF) stream'i. İçerik-adresli (sha256) olduğundan uzun
      * süre cache'lenebilir + immutable; ETag ile 304 desteği controller'da.
+     *
+     * @param string|null $downloadName null → inline (foto). Doluysa Content-Disposition:
+     *   attachment → tarayıcı dosyayı indirir, uygulama origin'inde RENDER ETMEZ. PDF gibi
+     *   ham saklanan (yeniden kodlanmayan) türler için XSS savunması (bulgu #3): kullanıcı
+     *   yüklemesi bir HTML/PDF polyglot olsa bile inline render edilmez.
      */
-    public function streamFile(string $path, string $mime, string $etag): void
+    public function streamFile(string $path, string $mime, string $etag, ?string $downloadName = null): void
     {
         if ($this->sent) {
             return;
@@ -59,6 +64,11 @@ final class Response
         header('Cache-Control: private, max-age=31536000, immutable');
         header('ETag: "' . $etag . '"');
         header('X-Content-Type-Options: nosniff');
+        if ($downloadName !== null) {
+            // ASCII-güvenli dosya adı (başlık enjeksiyonu / non-ASCII sorunlarına karşı).
+            $ascii = preg_replace('/[^A-Za-z0-9._-]/', '_', $downloadName) ?: 'dosya';
+            header('Content-Disposition: attachment; filename="' . $ascii . '"');
+        }
         readfile($path);
     }
 

@@ -6,6 +6,8 @@ import { db } from '../db/dexie'
 import type { PendingUpload } from '../db/types'
 import { api, ApiError } from './api'
 import { mapAttachment } from './apply'
+import { enqueue } from './outbox'
+import { nowIso } from '../lib/format'
 
 const MAX_ATTEMPTS = 8
 
@@ -16,9 +18,21 @@ export async function flushUploads(): Promise<{ uploaded: number }> {
   for (const up of pending) {
     if (up.attempts >= MAX_ATTEMPTS) continue // kalıcı hata — kullanıcı elle silebilir
     try {
-      const meta = await api.uploadAttachment(up.owner_type, up.owner_id, up.blob, up.filename)
-      // Sunucu kanonik metadata döndü → attachments'a yaz, kuyruk kaydını sil.
+      // up.id sunucuya idempotency anahtarı olarak gider (sunucu attachment PK'sı yapar) →
+      // timeout sonrası yeniden yükleme çift satır üretmez (bulgu #4).
+      const meta = await api.uploadAttachment(up.id, up.owner_type, up.owner_id, up.blob, up.filename)
+      // Sunucu kanonik metadata döndü → attachments'a yaz, kuyruk kaydını sil. ANCAK ağ
+      // beklerken kullanıcı iptal etmiş olabilir (cancelPendingUpload → uploads.delete).
+      // O hâlde eki YAZMA (kullanıcının iptalini sessizce geri alma — bulgu #7); bunun
+      // yerine sunucudaki satırı geri al (soft-delete outbox'a). up.id === attachment id.
+      const stillPending = await db.uploads.get(up.id)
+      if (!stillPending) {
+        await enqueue({ type: 'delete', entity: 'attachment', data: { id: up.id, updated_at: nowIso() } })
+        continue
+      }
       await db.transaction('rw', db.attachments, db.uploads, async () => {
+        // Transaction içinde SON kez doğrula (yarış penceresini daralt).
+        if (!(await db.uploads.get(up.id))) return
         await db.attachments.put(mapAttachment(meta))
         await db.uploads.delete(up.id)
       })
