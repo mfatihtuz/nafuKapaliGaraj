@@ -12,6 +12,7 @@ import { enqueue } from '../sync/outbox'
 import { applyTx } from '../sync/derive'
 import { engine } from '../sync/engine'
 import { downscaleImage, sha256Hex } from '../lib/image'
+import { MAX_ATTEMPTS } from '../sync/uploads'
 
 // --- Katalog (LWW) ----------------------------------------------------------
 
@@ -254,12 +255,14 @@ export async function addAttachment(
   const sha = await sha256Hex(blob)
   // Aynı içerik (sha) bu sahibe zaten ekli/kuyruktaysa yinelemeyi atla (bulgu #11):
   // galeride iki özdeş küçük resim oluşmasın. Farklı sahiplere aynı foto serbest.
+  // AMA kalıcı BAŞARISIZ (attempts>=MAX) bir yükleme "ekli" sayılmaz — kullanıcı aynı
+  // fotoğrafı yeniden ekleyebilmeli (fix-verify): dedup yalnız aktif/başarılı kayıtlara bakar.
   const dupSynced = await db.attachments
     .where('[owner_type+owner_id]').equals([ownerType, ownerId])
     .filter((a) => !a.deleted_at && a.sha256 === sha).count()
   const dupPending = await db.uploads
     .where('[owner_type+owner_id]').equals([ownerType, ownerId])
-    .filter((u) => u.sha256 === sha).count()
+    .filter((u) => u.sha256 === sha && u.attempts < MAX_ATTEMPTS).count()
   if (dupSynced > 0 || dupPending > 0) return 'duplicate'
   const up: PendingUpload = {
     id: uuidv7(),

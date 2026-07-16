@@ -206,6 +206,16 @@ try {
 }
 check($bomb, '31 aşırı çözünürlüklü görsel reddedildi (memory_limit bombası savunması)');
 
+// --- 13) PDF ham saklanır; kind=pdf, thumb yok → indirmede DAİMA attachment olmalı (bulgu #3/fix) ---
+$pdfBytes = "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF";
+$pdfRow = $svcA->store('part', $partId, $pdfBytes, 'belge.pdf');
+check($pdfRow['kind'] === 'pdf', '32 PDF kind=pdf');
+check($pdfRow['thumb_path'] === null, '33 PDF thumb_path NULL (thumb üretilmez)');
+check($pdfRow['mime'] === 'application/pdf', '34 PDF mime application/pdf (finfo)');
+// ?thumb=1 ile bile PDF gerçek dosyayı + kind=pdf döndürür → controller attachment zorunlu kılar
+$pf = $svcA->fileFor((string) $pdfRow['id'], true);
+check($pf['kind'] === 'pdf' && is_file($pf['path']), '35 PDF ?thumb=1 → gerçek dosya + kind=pdf (inline değil)');
+
 // temizlik
 if (is_dir($tmpStore)) {
     $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($tmpStore, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);

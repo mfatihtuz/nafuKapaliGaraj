@@ -68,9 +68,11 @@ final class FileController
             $res->notModified($etag);
             return;
         }
-        // Foto (JPEG, sunucuda yeniden kodlanmış) inline; PDF gibi ham türler attachment
+        // Foto (JPEG, sunucuda yeniden kodlanmış) inline; PDF gibi ham türler DAİMA attachment
         // olarak indirilir (uygulama origin'inde render edilmez — XSS savunması, bulgu #3).
-        $downloadName = (!$thumb && $f['kind'] !== 'photo') ? ($f['filename'] ?: 'dosya') : null;
+        // Karar YALNIZCA kind'e bağlı: PDF'in thumb'ı yoktur, ?thumb=1 gerçek PDF'i döndürür —
+        // o yolda da attachment zorunlu (aksi hâlde ?thumb=1 ile inline'a düşerdi — fix-verify).
+        $downloadName = $f['kind'] !== 'photo' ? ($f['filename'] ?: 'dosya') : null;
         $res->streamFile($f['path'], $f['mime'], $etag, $downloadName);
     }
 }

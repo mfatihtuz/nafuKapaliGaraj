@@ -9,7 +9,7 @@ import { mapAttachment } from './apply'
 import { enqueue } from './outbox'
 import { nowIso } from '../lib/format'
 
-const MAX_ATTEMPTS = 8
+export const MAX_ATTEMPTS = 8
 
 /** Bekleyen yüklemeleri sırayla sunucuya iletir. Online iken engine'den çağrılır. */
 export async function flushUploads(): Promise<{ uploaded: number }> {
