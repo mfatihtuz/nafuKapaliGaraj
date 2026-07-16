@@ -21,7 +21,6 @@ export function ScanModal({
   const videoRef = useRef<HTMLVideoElement>(null)
   const handleRef = useRef<ScannerHandle | null>(null)
   const doneRef = useRef(false)
-  const cancelledRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [manual, setManual] = useState('')
 
@@ -33,21 +32,25 @@ export function ScanModal({
   }
 
   useEffect(() => {
-    cancelledRef.current = false
+    // Her effect çalışması KENDİ yerel bayrağını + handle'ını tutar (StrictMode çift-mount
+    // güvenli): ilk çalışmanın cleanup'ı kendi kamera akışını kapatır → sızıntı olmaz.
+    let cancelled = false
+    let localHandle: ScannerHandle | null = null
     ;(async () => {
       const video = videoRef.current
       if (!video) return
       try {
         const handle = await startScanner(video, (text) => finish(text.trim()), { multiFormat })
-        // await sırasında modal kapandıysa kamerayı hemen kapat (sızıntı önleme).
-        if (cancelledRef.current) { handle.stop(); return }
+        if (cancelled) { handle.stop(); return } // await sırasında sökülmüş → hemen kapat
+        localHandle = handle
         handleRef.current = handle
       } catch {
-        setError(t('scan.permission_denied'))
+        if (!cancelled) setError(t('scan.permission_denied'))
       }
     })()
     return () => {
-      cancelledRef.current = true
+      cancelled = true
+      localHandle?.stop()
       handleRef.current?.stop()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

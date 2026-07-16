@@ -24,6 +24,26 @@ export function uuidv7(): string {
   return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}`
 }
 
+/**
+ * Bir tohumdan DETERMİNİSTİK, v7-biçimli UUID üretir (SHA-256). Aynı tohum → aynı id.
+ * Kullanım: "son hareketi geri al" telafi kaydının id'si = tohum('undo:'+kaynakTxId).
+ * Böylece aynı geri-alma iki kez uygulanamaz: yerelde applyTx id ile teklenir, sunucuda
+ * tekrar INSERT PK çakışır → reddedilir (asla çift uygulanmaz → negatif stok olmaz).
+ * crypto.subtle yoksa (güvensiz bağlam) rastgele uuidv7'ye düşer (idempotentlik kaybolur
+ * ama in-flight kilidi tek-cihaz çift-dokunuşu zaten önler).
+ */
+export async function deterministicUuid(seed: string): Promise<string> {
+  if (!globalThis.crypto?.subtle) return uuidv7()
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed))
+  const b = new Uint8Array(digest).slice(0, 16)
+  b[6] = (b[6] & 0x0f) | 0x70 // sürüm 7 biçimi
+  b[8] = (b[8] & 0x3f) | 0x80 // varyant 10xx
+  const hex: string[] = []
+  for (let i = 0; i < 16; i++) hex.push(b[i].toString(16).padStart(2, '0'))
+  const s = hex.join('')
+  return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}`
+}
+
 const V7_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export function isUuidv7(id: string): boolean {

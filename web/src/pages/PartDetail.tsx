@@ -98,6 +98,7 @@ export function PartDetail() {
   const places = useLocationsForPart(id)
   const history = useTransactionsForPart(id)
   const locations = useLocations()
+  const [undoing, setUndoing] = useState(false)
 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Part | null>(null)
@@ -373,8 +374,14 @@ export function PartDetail() {
               if (!canUndo) return null
               return (
                 <button
-                  onClick={() => { void undoLastMovement(last, prevLevel); toast.show(t('part.undone'), 'success') }}
-                  className="btn-ghost h-8 gap-1 px-2 text-xs text-brand-500 hover:text-brand-800"
+                  disabled={undoing}
+                  onClick={async () => {
+                    if (undoing) return // çift-dokunuş kilidi (mobil/tek-el) → çift telafi/negatif stok önlenir
+                    setUndoing(true)
+                    try { await undoLastMovement(last, prevLevel); toast.show(t('part.undone'), 'success') }
+                    finally { setUndoing(false) }
+                  }}
+                  className="btn-ghost h-8 gap-1 px-2 text-xs text-brand-500 hover:text-brand-800 disabled:opacity-40"
                 >
                   <IconUndo size={15} /> {t('part.undo_last')}
                 </button>

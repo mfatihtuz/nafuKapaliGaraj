@@ -1162,6 +1162,45 @@ await sect('Y-intake-mpn', {}, async ({ page, pageErrors }) => {
   check('Y2 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ Z. DOLULUK TAŞIMA → UNDO GUARD (yarım transfer/hayalet stok önleme) ════
+await sect('Z-level-transfer-undo', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'parts/p-cam', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Başka çekmeceye taşı' }).first().click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder*="onum kodu"]').fill('D1'); await page.waitForTimeout(250)
+  await page.locator('button.btn-primary', { hasText: 'Taşı' }).click(); await page.waitForTimeout(800)
+  const legs = (await dexie(page, 'transactions')).filter((t) => t.part_id === 'p-cam' && t.reason === 'transfer' && t.level_to != null)
+  check('Z1 doluluk taşımanın iki bacağı da reason=transfer', legs.length >= 2, `legs=${legs.length}`)
+  const st = await dexie(page, 'stock')
+  check('Z2 hedef DOLU, kaynak BİTTİ (hayalet stok yok)', st.find((s) => s.key === 'p-cam|d1')?.level === 'full' && st.find((s) => s.key === 'p-cam|d2')?.level === 'empty')
+  check('Z3 transfer bacağında "Son hareketi geri al" GİZLİ', (await page.getByRole('button', { name: /Son hareketi geri al/ }).count()) === 0)
+  check('Z4 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
+// ═══ AA. MEVCUT PARÇAYA BARKOD MPN GERİ-DOLDURMA (sessiz kayıp önleme) ══════
+await sect('AA-mpn-backfill', {}, async ({ page, pageErrors }) => {
+  await page.evaluate(async ({ NOW }) => {
+    await new Promise((res, rej) => {
+      const o = indexedDB.open('depo')
+      o.onsuccess = () => { const dbx = o.result; const tx = dbx.transaction('parts', 'readwrite')
+        tx.objectStore('parts').put({ id: 'p-bf', category_id: 'cat-r', sku: 'R-9K1-0805', name: 'Backfill Direnç', mpn: null, manufacturer: null, attributes: { deger: '9K1', paket: '0805' }, tags: 'backfill', count_mode: 'exact', abc_class: 'C', min_qty: null, unit: 'adet', datasheet_url: null, photo_id: null, notes: null, updated_at: NOW, deleted_at: null })
+        tx.oncomplete = () => { dbx.close(); res() }; tx.onerror = () => rej(tx.error) }
+    })
+  }, { NOW })
+  await page.goto(BASE + 'intake', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: /Direnç/ }).first().click(); await page.waitForTimeout(300)
+  await page.locator('#attr-deger').fill('9K1')
+  await page.getByRole('button', { name: '0805', exact: true }).click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder="MPN"]').fill('BACKFILL-1')
+  await page.getByRole('button', { name: /Devam/ }).click(); await page.waitForTimeout(300)
+  await page.locator('#intake-loc').fill('D1'); await page.waitForTimeout(250)
+  await page.locator('input[placeholder="0"]').fill('5'); await page.waitForTimeout(150)
+  await page.getByRole('button', { name: /Kaydet/ }).last().click(); await page.waitForTimeout(700)
+  const bf = (await dexie(page, 'parts')).find((p) => p.id === 'p-bf')
+  check('AA1 mevcut parçaya MPN geri-dolduruldu (yeni parça oluşmadı)', bf?.mpn === 'BACKFILL-1', JSON.stringify({ mpn: bf?.mpn }))
+  check('AA2 mükerrer SKU ile ikinci parça oluşmadı', (await dexie(page, 'parts')).filter((p) => p.sku === 'R-9K1-0805' && !p.deleted_at).length === 1)
+  check('AA3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ---------------------------------------------------------------------------
 await browser.close()
 const fails = results.filter((r) => !r.ok)

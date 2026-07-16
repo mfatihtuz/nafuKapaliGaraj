@@ -6,7 +6,7 @@ import type {
   Part, Location, Category, Stock, StockLevel, TxReason, Transaction, OutboxOp,
   AttachmentOwnerType, AttachmentKind, PendingUpload,
 } from './types'
-import { uuidv7 } from '../lib/uuid'
+import { uuidv7, deterministicUuid } from '../lib/uuid'
 import { nowIso } from '../lib/format'
 import { enqueue } from '../sync/outbox'
 import { applyTx } from '../sync/derive'
@@ -132,12 +132,13 @@ export interface MoveInput {
   note?: string | null
   projectId?: string | null
   refId?: string | null
+  txId?: string // verilirse hareket id'si (idempotent geri-alma için deterministik)
 }
 
 /** exact mod: qty += delta. Optimistik, ağ beklemez (< 16 ms hedefi). */
 export async function moveStock(input: MoveInput): Promise<void> {
   const tx: Transaction = {
-    id: uuidv7(),
+    id: input.txId ?? uuidv7(),
     part_id: input.partId,
     location_id: input.locationId,
     delta: input.delta,
@@ -154,22 +155,23 @@ export async function moveStock(input: MoveInput): Promise<void> {
   engine.schedule()
 }
 
-/** level mod: DOLU/AZ/BİTTİ durumu. */
+/** level mod: DOLU/AZ/BİTTİ durumu. opts.reason='transfer' → taşıma bacağı (undo hariç tutar). */
 export async function setLevel(
   partId: string,
   locationId: string,
   level: StockLevel,
   note?: string | null,
+  opts: { reason?: TxReason; refId?: string; txId?: string } = {},
 ): Promise<void> {
   const tx: Transaction = {
-    id: uuidv7(),
+    id: opts.txId ?? uuidv7(),
     part_id: partId,
     location_id: locationId,
     delta: null,
     level_to: level,
-    reason: 'adjust',
+    reason: opts.reason ?? 'adjust',
     project_id: null,
-    ref_id: null,
+    ref_id: opts.refId ?? null,
     note: note ?? null,
     actor_id: null,
     created_at: nowIso(),
@@ -203,8 +205,11 @@ export async function movePartStock(
     }
     await moveStock({ partId: part.id, locationId: toLocationId, delta: qty, reason: 'transfer', refId })
   } else if (part.count_mode === 'level') {
-    await setLevel(part.id, toLocationId, stock?.level ?? 'full')
-    await setLevel(part.id, fromLocationId, 'empty')
+    // İki bacak da reason 'transfer' + ortak refId → "son hareketi geri al" bunları dışlar
+    // (yarım transfer geri alma / hayalet stok önlenir; exact/unmanaged ile aynı korumada).
+    const refId = uuidv7()
+    await setLevel(part.id, toLocationId, stock?.level ?? 'full', null, { reason: 'transfer', refId })
+    await setLevel(part.id, fromLocationId, 'empty', null, { reason: 'transfer', refId })
   } else {
     // Takipsiz: varlık işareti taşınır — kaynak −1 ("artık burada değil"), hedef +1.
     // qty < 0 olan takipsiz satırlar listelerde gizlenir (bkz. queries.isExhausted).
@@ -268,13 +273,16 @@ export async function auditStock(
  * Transfer (çift bacaklı) geri alınmaz — çağıran taraf düğmeyi göstermez.
  */
 export async function undoLastMovement(tx: Transaction, prevLevel: StockLevel | null): Promise<void> {
+  // Telafi kaydının id'si kaynak tx'ten DETERMİNİSTİK → aynı geri-alma iki kez uygulanamaz
+  // (yerelde applyTx id ile tekler, sunucuda tekrar INSERT PK çakışır → negatif stok olmaz).
+  const undoId = await deterministicUuid('undo:' + tx.id)
   if (tx.delta != null && tx.delta !== 0) {
     await moveStock({
       partId: tx.part_id, locationId: tx.location_id, delta: -tx.delta,
-      reason: 'adjust', note: 'Geri alma', refId: tx.id,
+      reason: 'adjust', note: 'Geri alma', refId: tx.id, txId: undoId,
     })
   } else if (tx.level_to != null && prevLevel != null) {
-    await setLevel(tx.part_id, tx.location_id, prevLevel, 'Geri alma')
+    await setLevel(tx.part_id, tx.location_id, prevLevel, 'Geri alma', { reason: 'adjust', txId: undoId })
   }
 }
 

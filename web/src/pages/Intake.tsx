@@ -80,6 +80,9 @@ export function Intake() {
     api.aiStatus().then((s) => setAiEnabled(s.ai_enabled)).catch(() => setAiEnabled(false))
   }, [])
 
+  // Kategori değişince MPN/üretici sıfırla — önceki parçanın kodu yeni parçaya sızmasın.
+  useEffect(() => { setMpn(''); setManuf('') }, [catId])
+
   /** Fotoğraftan öznitelik önerisi al ve formu ön-doldur (FAZ 2.3). */
   async function onAiPhoto(file: File | undefined): Promise<void> {
     if (!file || !category) return
@@ -203,6 +206,19 @@ export function Intake() {
           return
         }
         partId = existing.id
+        // Barkod/AI ile taranan MPN/üretici mevcut parçada BOŞSA geri-doldur (sessiz kayıp
+        // önle). Mevcut değeri EZMEZ (farklı barkod okunmuş olabilir) — yalnız boşluğu doldurur.
+        const newMpn = mpn.trim() || null
+        const newManuf = manufacturer.trim() || null
+        if ((newMpn && !existing.mpn) || (newManuf && !existing.manufacturer)) {
+          const merged: Part = {
+            ...existing,
+            mpn: existing.mpn ?? newMpn,
+            manufacturer: existing.manufacturer ?? newManuf,
+          }
+          merged.tags = buildTags(merged.name, merged.attributes, category, merged.manufacturer, merged.mpn)
+          await savePart(merged)
+        }
         toast.show(t('intake.add_to_existing'), 'info')
       } else {
         const part: Part = {
