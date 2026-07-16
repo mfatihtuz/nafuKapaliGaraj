@@ -4,6 +4,25 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 
 ---
 
+## 2026-07-16 · KRİTİK: API yanıtları önbelleğe alınıyordu (bayat bootstrap)
+
+**Kök neden (kesin):** API yanıtları `Cache-Control` başlığı GÖNDERMİYORDU. Bootstrap
+bir GET isteği (`/sync/bootstrap`); başlık olmayınca tarayıcının HTTP cache'i yanıtı
+saklıyor, çıkış/giriş yapılsa bile sunucuya sormadan ESKİ kategori/konum ağacını
+döndürüyordu. Sunucu doğru ağacı (173/11) tutmasına ve cihaz "Güncel" göstermesine
+rağmen kullanıcı yarım/eski ağacı görüyordu (ELK altı yarım, ELN/MEK/EVE boş, XTAL).
+Teşhis: phpMyAdmin sorgusu tenant'ta 173 aktif kategori / 11 kök doğruladı → sorun
+istemci tarafında bayat cache.
+
+**Yapıldı:**
+- Sunucu: `Response::json` + config-yok 503 artık `Cache-Control: no-store, no-cache,
+  must-revalidate` + `Pragma: no-cache` gönderiyor (tüm API yanıtları).
+- İstemci: `fetch(..., { cache: 'no-store' })` — tarayıcı HTTP cache'i tamamen atlanır,
+  API çağrıları daima ağdan taze gelir.
+- Kullanıcı için: yeni ZIP + bir kez "Sunucudan yenile" / çıkış-giriş → taze bootstrap.
+
+---
+
 ## 2026-07-16 · Bozuk kategori ağacı (hayalet kayıt) — temiz yeniden indirme
 
 **Sorun:** Kategori ağacı yeniden yapılandırılıp migration uygulandıktan sonra, cihaz

@@ -19,6 +19,11 @@ final class Response
         $this->sent = true;
         http_response_code($status);
         header('Content-Type: application/json; charset=utf-8');
+        // API yanıtları ASLA önbelleğe alınmamalı. Aksi hâlde tarayıcı/proxy GET
+        // isteklerini (ör. /sync/bootstrap, /sync/pull) cache'ler ve çıkış/giriş
+        // yapılsa bile ESKİ veriyi döndürür → güncellenmiş kategori ağacı inmez.
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
         // Geçersiz UTF-8 encode'u false yapıp 200+boş gövde üretmesin: bozuk baytları
         // U+FFFD ile değiştir; yine de başarısızsa açık 500 dön.
         $body = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);

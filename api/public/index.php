@@ -72,6 +72,7 @@ if ($config === null) {
     }
     http_response_code(503);
     header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
     echo json_encode([
         'error'   => 'config_not_found',
         'message' => $message,

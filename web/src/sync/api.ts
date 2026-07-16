@@ -23,6 +23,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     res = await fetch(API_BASE + path, {
       method,
       credentials: 'include',
+      // API yanıtları taze olmalı: tarayıcının HTTP cache'ini tamamen atla. Aksi hâlde
+      // GET /sync/bootstrap gibi istekler eski önbellekten döner ve çıkış/giriş yapılsa
+      // bile güncellenmiş kategori/konum ağacı inmez (bkz. sunucu no-store başlığı).
+      cache: 'no-store',
       headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: ctrl.signal,
