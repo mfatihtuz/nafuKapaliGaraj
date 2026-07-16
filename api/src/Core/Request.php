@@ -94,6 +94,30 @@ final class Request
         return $this->cookies[$key] ?? null;
     }
 
+    /**
+     * Multipart yükleme dosyası ($_FILES[$key]). Yalnızca başarılı yüklemede döner.
+     * @return array{name:string,tmp_name:string,size:int,error:int,type:string}|null
+     */
+    public function file(string $key): ?array
+    {
+        $f = $_FILES[$key] ?? null;
+        if (!is_array($f) || (int) ($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            return null;
+        }
+        return [
+            'name'     => (string) ($f['name'] ?? 'dosya'),
+            'tmp_name' => (string) ($f['tmp_name'] ?? ''),
+            'size'     => (int) ($f['size'] ?? 0),
+            'error'    => (int) ($f['error'] ?? 0),
+            'type'     => (string) ($f['type'] ?? ''),
+        ];
+    }
+
+    public function header(string $name): ?string
+    {
+        return $this->headers[$name] ?? null;
+    }
+
     public function bearerOrCookie(string $cookieName): ?string
     {
         $auth = $this->headers['Authorization'] ?? '';

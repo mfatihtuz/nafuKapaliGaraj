@@ -215,22 +215,28 @@ CREATE TABLE stock_transactions (
 -- EK DOSYALAR (FAZ 2)
 -- ------------------------------------------------------------
 
+-- Bkz. migration 007. Polimorfik sahiplik (FK yok), LWW için updated_at,
+-- dedup için NON-UNIQUE sha256 indeksi (aynı görsel birden çok sahibe eklenebilir).
 CREATE TABLE attachments (
-  id            CHAR(36)     NOT NULL PRIMARY KEY,
-  tenant_id     CHAR(36)     NOT NULL,
-  owner_entity  VARCHAR(32)  NOT NULL,   -- 'part' | 'location' | 'project'
-  owner_id      CHAR(36)     NOT NULL,
-  kind          ENUM('photo','datasheet','doc') NOT NULL,
-  filename      VARCHAR(255) NOT NULL,
-  mime          VARCHAR(100) NOT NULL,
-  size_bytes    INT UNSIGNED NOT NULL,
-  sha256        CHAR(64)     NOT NULL,   -- mükerrer yüklemeyi engeller
-  storage_path  VARCHAR(500) NOT NULL,   -- webroot DIŞI
-  thumb_path    VARCHAR(500) NULL,
-  created_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  deleted_at    DATETIME(3)  NULL,
-  KEY idx_att_owner (tenant_id, owner_entity, owner_id),
-  UNIQUE KEY uq_att_hash (tenant_id, sha256)
+  id           CHAR(36)     NOT NULL PRIMARY KEY,       -- UUIDv7 (istemci üretimli)
+  tenant_id    CHAR(36)     NOT NULL,
+  owner_type   ENUM('part','location') NOT NULL,        -- polimorfik sahip türü
+  owner_id     CHAR(36)     NOT NULL,                    -- parts.id | locations.id
+  kind         ENUM('photo','pdf') NOT NULL,
+  filename     VARCHAR(255) NOT NULL,                    -- orijinal dosya adı
+  mime         VARCHAR(100) NOT NULL,                    -- 'image/jpeg','application/pdf', ...
+  size_bytes   INT UNSIGNED NOT NULL,
+  sha256       CHAR(64)     NOT NULL,                    -- içerik özeti; dedup + değişmezlik
+  width        INT UNSIGNED NULL,                        -- foto piksel (pdf: NULL)
+  height       INT UNSIGNED NULL,                        -- foto piksel (pdf: NULL)
+  storage_path VARCHAR(500) NOT NULL,                    -- webroot DIŞI, sha256'dan türetilir
+  thumb_path   VARCHAR(500) NULL,                        -- foto önizleme (pdf: NULL)
+  sort_order   INT          NOT NULL DEFAULT 0,          -- aynı sahipte sıralama
+  created_at   DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at   DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),  -- LWW anahtarı
+  deleted_at   DATETIME(3)  NULL,                        -- soft delete
+  KEY idx_att_owner (tenant_id, owner_type, owner_id, sort_order),
+  KEY idx_att_sha (tenant_id, sha256)                    -- dedup lookup (UNIQUE değil)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- ------------------------------------------------------------

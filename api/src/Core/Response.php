@@ -44,6 +44,36 @@ final class Response
     }
 
     /**
+     * İkili dosya (foto/PDF) stream'i. İçerik-adresli (sha256) olduğundan uzun
+     * süre cache'lenebilir + immutable; ETag ile 304 desteği controller'da.
+     */
+    public function streamFile(string $path, string $mime, string $etag): void
+    {
+        if ($this->sent) {
+            return;
+        }
+        $this->sent = true;
+        http_response_code(200);
+        header('Content-Type: ' . $mime);
+        header('Content-Length: ' . (string) (filesize($path) ?: 0));
+        header('Cache-Control: private, max-age=31536000, immutable');
+        header('ETag: "' . $etag . '"');
+        header('X-Content-Type-Options: nosniff');
+        readfile($path);
+    }
+
+    public function notModified(string $etag): void
+    {
+        if ($this->sent) {
+            return;
+        }
+        $this->sent = true;
+        http_response_code(304);
+        header('ETag: "' . $etag . '"');
+        header('Cache-Control: private, max-age=31536000, immutable');
+    }
+
+    /**
      * httpOnly opak session cookie'si (ARCHITECTURE §3).
      */
     public function setCookie(

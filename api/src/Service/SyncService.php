@@ -6,6 +6,7 @@ namespace Depo\Service;
 use Depo\Core\Db;
 use Depo\Core\HttpException;
 use Depo\Core\Uuid;
+use Depo\Repository\AttachmentRepository;
 use Depo\Repository\CategoryRepository;
 use Depo\Repository\ChangeLogRepository;
 use Depo\Repository\LocationRepository;
@@ -27,6 +28,7 @@ final class SyncService
     private PartRepository $parts;
     private LocationRepository $locations;
     private CategoryRepository $categories;
+    private AttachmentRepository $attachments;
     private StockRepository $stock;
     private TransactionRepository $tx;
     private ChangeLogRepository $changeLog;
@@ -42,6 +44,7 @@ final class SyncService
         $this->parts = new PartRepository($db, $tenantId, $clockSkewMinutes);
         $this->locations = new LocationRepository($db, $tenantId, $clockSkewMinutes);
         $this->categories = new CategoryRepository($db, $tenantId, $clockSkewMinutes);
+        $this->attachments = new AttachmentRepository($db, $tenantId, $clockSkewMinutes);
         $this->stock = new StockRepository($db, $tenantId);
         $this->tx = new TransactionRepository($db, $tenantId, $clockSkewMinutes);
         $this->changeLog = new ChangeLogRepository($db, $tenantId);
@@ -75,6 +78,7 @@ final class SyncService
                 'categories'         => $this->categories->allActive(),
                 'locations'          => $this->locations->allActive(),
                 'parts'              => $this->parts->allActive(),
+                'attachments'        => $this->attachments->allActive(),
                 'stock_snapshot'     => $this->stock->snapshot(),
                 'stock_transactions' => $this->tx->recentForBootstrap(90),
                 'cursor'             => $this->changeLog->maxSeq(),
@@ -269,13 +273,14 @@ final class SyncService
         $this->syncOps->record($opId);
     }
 
-    private function catalogRepo(string $entity): PartRepository|LocationRepository|CategoryRepository
+    private function catalogRepo(string $entity): PartRepository|LocationRepository|CategoryRepository|AttachmentRepository
     {
         return match ($entity) {
-            'part'     => $this->parts,
-            'location' => $this->locations,
-            'category' => $this->categories,
-            default    => throw HttpException::unprocessable('Senkronlanamayan varlık: ' . $entity),
+            'part'       => $this->parts,
+            'location'   => $this->locations,
+            'category'   => $this->categories,
+            'attachment' => $this->attachments, // yalnızca delete/sort push edilir; yükleme ayrı endpoint
+            default      => throw HttpException::unprocessable('Senkronlanamayan varlık: ' . $entity),
         };
     }
 }

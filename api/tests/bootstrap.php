@@ -89,6 +89,14 @@ function make_test_db(): array
       delta NUMERIC NULL, level_to TEXT NULL, reason TEXT NOT NULL, project_id TEXT NULL, ref_id TEXT NULL,
       note TEXT NULL, actor_id TEXT NULL, created_at TEXT NOT NULL
     );
+    CREATE TABLE attachments (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_type TEXT NOT NULL, owner_id TEXT NOT NULL,
+      kind TEXT NOT NULL, filename TEXT NOT NULL, mime TEXT NOT NULL, size_bytes INTEGER NOT NULL,
+      sha256 TEXT NOT NULL, width INTEGER NULL, height INTEGER NULL, storage_path TEXT NOT NULL,
+      thumb_path TEXT NULL, sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now')),
+      updated_at TEXT NOT NULL, deleted_at TEXT NULL
+    );
     SQL;
 
     $pdo->exec($ddl);

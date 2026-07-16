@@ -50,5 +50,20 @@ return [
     'storage' => [
         // Yüklenen dosyalar (Faz 2). Webroot DIŞI olmalı.
         'path' => __DIR__ . '/storage',
+        // Yükleme boyut sınırları (bayt). Foto sunucuda yeniden kodlanır; PDF ham saklanır.
+        'max_photo_bytes' => 10 * 1024 * 1024, // 10 MB
+        'max_pdf_bytes'   => 20 * 1024 * 1024, // 20 MB
+    ],
+
+    // FAZ 2.3/2.5 — AI fotoğraftan tanıma + MPN zenginleştirme (opsiyonel).
+    // Anahtar SUNUCUDA kalır, frontend'e ASLA gönderilmez (CLAUDE.md §6).
+    // enabled=false veya api_key boşken tüm AI uçları nazikçe devre dışı (200 + disabled).
+    'ai' => [
+        'enabled' => false,                 // aktive etmek için true + api_key doldur
+        'api_key' => '',                    // Anthropic API anahtarı (sk-ant-...)
+        'model'   => 'claude-sonnet-5',
+        'mpn_lookup' => [
+            'enabled' => false,             // 2.5 — sağlayıcı erişimi doğrulanınca aç
+        ],
     ],
 ];

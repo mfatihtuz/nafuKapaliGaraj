@@ -11,7 +11,9 @@ declare(strict_types=1);
  */
 
 use Depo\Controller\AccountController;
+use Depo\Controller\AiController;
 use Depo\Controller\AuthController;
+use Depo\Controller\FileController;
 use Depo\Controller\HealthController;
 use Depo\Controller\OrgController;
 use Depo\Controller\SyncController;
@@ -28,6 +30,15 @@ $router->get('/api/sync/bootstrap', [SyncController::class, 'bootstrap']);
 $router->get('/api/sync/pull', [SyncController::class, 'pull']);
 $router->get('/api/sync/checksum', [SyncController::class, 'checksum']);
 $router->post('/api/sync/push', [SyncController::class, 'push']);
+
+// Dosya ekleri (foto/PDF) — ikili yükleme/indirme (FAZ 2.1). Silme sync push ile.
+$router->post('/api/files', [FileController::class, 'upload']);
+$router->get('/api/files/:id', [FileController::class, 'download']);
+
+// AI tanıma (2.3) + MPN (2.5) — anahtar yoksa nazikçe devre dışı (200 + disabled).
+$router->get('/api/ai/status', [AiController::class, 'status']);
+$router->post('/api/ai/identify', [AiController::class, 'identify']);
+$router->get('/api/lookup/mpn', [AiController::class, 'lookupMpn']);
 
 // Hesap (her rol kendi hesabını yönetir)
 $router->post('/api/account/password', [AccountController::class, 'changePassword']);
