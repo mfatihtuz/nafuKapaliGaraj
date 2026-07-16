@@ -4,6 +4,30 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 
 ---
 
+## 2026-07-16 · CSV / toplu parça içe aktarma (kurulum hızlandırıcı)
+
+**Neden:** İlk stoklamada en büyük sürtünme 250-600 SKU'yu elle girmek. Sprint
+kuralı "FAZ 3 öncesi 100+ SKU gir" bununla engelleniyordu → içe aktarma o kapıyı açar.
+
+**Yapıldı (Ayarlar → İçe Aktar):**
+- `lib/csv.ts` — bağımlılıksız CSV ayrıştırıcı: ayraç sezme (`;`/`,`/tab — TR Excel `;`),
+  tırnak kaçışı, CRLF, BOM; şablon üretimi (`toCsvRow`).
+- `lib/partImport.ts` (saf/test edilebilir) — TR/EN başlık eşleme, kategori (kod/ad) +
+  konum (kod) çözümleme, sayım-yöntemi/doluluk/birim eşanlamlıları, TR ondalık sayı,
+  SKU verilmişse ASCII/upper + çakışma hatası / boşsa addan benzersiz üretim, satır-satır
+  doğrulama (geçerli/hatalı + sebep).
+- `actions.importPartsBulk` — parça satırları + upsert op'ları tek transaction (sıra:
+  parça önce, stok sonra), sonra başlangıç stoğu (miktar/doluluk), tek sync tetiği.
+- `ImportSection.tsx` — yapıştır/dosya yükle, örnek şablon indir, geçerli/hatalı önizleme.
+- **Sunucu değişikliği YOK** — normal parça/stok sync yolundan geçer (mevcut tenant
+  doğrulaması + prepared statement). DB şeması değişmez → migration gerekmez.
+
+**Test:** E2E V1-V9 (ayraç sezme, kategori/konum çözümleme, SKU üretimi+çakışma reddi,
+başlangıç stoğu exact 150 & level DOLU, hatalı satır reddi). Toplam **E2E 173**, tsc temiz.
+Commit `ca6633a`.
+
+---
+
 ## 2026-07-16 · FAZ 2 TAMAMLANDI — ekler/foto, AI tanıma, eksik liste, MPN
 
 **Kapsam (tümü çalışır + test edildi):**
