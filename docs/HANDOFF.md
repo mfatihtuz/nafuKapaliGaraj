@@ -4,6 +4,45 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 
 ---
 
+## 2026-07-17 · FAZ 3b TAMAMLANDI — Ödünç + Tedarikçiler/fiyat + Siparişler (PO)
+
+**Tasarım (FAZ 3a ile aynı kalıp):** SIFIR yeni stok tesisatı. Yeni varlıklar **LWW
+katalog** (`loans`, `suppliers`, `part_suppliers`, `purchase_orders`, `po_items`); stok
+DAİMA mevcut defterle (delta/level) taşınır. Tüm FAZ 3b tabloları **001_init'te zaten
+vardı** → yeni tablo kurulmadı, hiçbir mevcut tabloya sütun eklenmedi.
+
+**Kapsam:**
+- **3.4 Ödünç:** borçlu-başına `LOAN-<slug>` sanal göz (id borçlu slug'ından
+  DETERMİNİSTİK — çevrimdışı çakışma yok); ödünç ver = `loan_out` iki bacak (kaynak −,
+  LOAN +), iade = `loan_return` + `returned_at` kapatma (deterministik txId, idempotent).
+  Ödünçler ekranı (borçluya göre, vade rozeti) + parça detayında Ödünç kartı.
+- **3.5 Tedarikçiler/fiyat:** `part_supplier` id (part|supplier)'dan deterministik
+  (uq_ps + LWW); parça detayında "en ucuz" kartı.
+- **3.6 Siparişler:** PO + satır (parça ara-seç ya da ham ad), durum akışı
+  (taslak→sipariş→teslim), satır bazlı teslim = `purchase` hareketi (`ref_id`=satır) +
+  `received_qty`; PO→satır cascade soft-delete. Alışveriş→PO köprüsü ("Siparişe ekle").
+
+**DB:** `migration 009` = yalnız `idx_tx_ref` (ödünç/sipariş/transfer bağı). schema.sql
+eşitlendi. **Sunucu:** 5 repo + SyncService bağlama (bootstrap/catalog/FK sırası) + PO
+delete cascade. Client sync tesisatı (dexie v4, apply mapper'ları, bootstrap) 3.5'te kuruldu.
+
+**Adversarial inceleme (5 boyut, 21 ajan):** 8 bulgu, 7 doğrulandı, hepsi giderildi:
+- (high) ödünç konumu rastgele id → çevrimdışı `uq_loc_code` çakışması → **deterministik id**.
+- (high) `receivePoItem` level parçayı exact işliyordu → **count_mode dallanması**.
+- (medium) level modda aynı borçluya çift ödünç iadesi gözü erken boşaltıyordu → **son iade boşaltır**.
+- (XSS) `product_url`/`datasheet_url` doğrulamadan href → **`safeHttpUrl` (yalnız http/https)**.
+
+**Bilinen sınır (bilinçli ertelenen — #7 low):** `po_item.received_qty` çok-cihaz eşzamanlı
+kısmi teslimde LWW ile ayrışabilir (son-yazan ≠ toplam). **STOK daima doğru** (defter/delta
+yetkili); yalnız özet metadata etkilenir — `loans.qty` ile aynı sınıf, garaj tek-cihaz
+kullanımında oluşmaz. Ürünleştirmede received_qty defterden türetilebilir.
+
+**Test:** PHP **170** (sync 108 → Test 23 ödünç, Test 24 PO), E2E **240** (EE ödünç, FF
+sipariş, GG inceleme-regresyonu), tsc+build temiz. Commit'ler: `e5567e2` 3.5 · `e4bae8d`
+3.4 · `79038f9` 3.6 · `f4266b5` docs+migration · `62b1c11` inceleme düzeltmeleri.
+
+---
+
 ## 2026-07-17 · FAZ 3a TAMAMLANDI — Projeler + BOM + "Yapabilir miyim?" + proje sanal konumu
 
 **Tasarım (çok-yaklaşım workflow jürisi kazananı):** SIFIR yeni stok tesisatı. `projects`
