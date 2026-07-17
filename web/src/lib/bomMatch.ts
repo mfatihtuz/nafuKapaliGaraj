@@ -39,7 +39,8 @@ export function matchBomRow(raw: BomRaw, parts: Part[]): MatchResult {
     const p = parts.find((x) => x.sku && normalize(x.sku) === nsku)
     if (p) return { part: p, kind: 'sku' }
   }
-  // 3) Değer (+ footprint): değer parçanın ad/etiket/sku'sunda geçmeli; footprint varsa daralt
+  // 3) Değer (+ footprint): değer parçanın ad/etiket/sku'sunda TAM TOKEN olarak geçmeli
+  //    ('1k' → '11k'e YANLIŞ eşleşmesin); footprint verildiyse çelişen paketi reddet.
   const val = normalize(raw.value ?? '')
   if (val) {
     const fp = footprintCode(raw.footprint)
@@ -49,15 +50,24 @@ export function matchBomRow(raw: BomRaw, parts: Part[]): MatchResult {
       const withFp = byValue.filter((p) => hay(p).includes(fp))
       if (withFp.length === 1) return { part: withFp[0], kind: 'value_fp' }
       if (withFp.length > 1) return { part: null, kind: 'value_fp' } // belirsiz → elle seç
+      // Footprint verildi ama tam eşleşme yok: adaylardan biri FARKLI bir paket kodu
+      // taşıyorsa (ör. '0603' isteniyor '0805'), yanlış pakete OTOMATİK bağlama — elle seç.
+      const conflicting = byValue.some((p) => {
+        const pfp = footprintCode(hay(p))
+        return pfp !== '' && pfp !== fp
+      })
+      if (conflicting) return { part: null, kind: 'none' }
+      // else: adaylarda paket bilgisi yok → değere göre bağlamaya izin ver (aşağıda)
     }
     if (byValue.length === 1) return { part: byValue[0], kind: 'value' }
   }
   return { part: null, kind: 'none' }
 }
 
-/** Değer eşleşmesi: token bazlı ('10k' → parçanın metninde '10k' geçer). */
+/** Değer eşleşmesi: her değer token'ı hedef metinde TAM TOKEN olmalı (alt-dizi değil). */
 function valueMatches(value: string, haystack: string): boolean {
-  const tokens = value.split(/\s+/).filter(Boolean)
-  if (tokens.length === 0) return false
-  return tokens.every((t) => haystack.includes(t))
+  const vt = value.split(/[^a-z0-9]+/i).filter(Boolean)
+  if (vt.length === 0) return false
+  const ht = new Set(haystack.split(/[^a-z0-9]+/i).filter(Boolean))
+  return vt.every((t) => ht.has(t))
 }

@@ -269,8 +269,18 @@ final class SyncService
                 $entity = (string) ($op['entity'] ?? '');
                 $repo = $this->catalogRepo($entity);
                 $id = (string) ($data['id'] ?? '');
-                $row = $repo->softDelete($id, is_string($data['updated_at'] ?? null) ? $data['updated_at'] : null);
+                $updatedAt = is_string($data['updated_at'] ?? null) ? $data['updated_at'] : null;
+                $row = $repo->softDelete($id, $updatedAt);
                 $this->changeLog->append($entity, $id, 'delete', $row, $this->actorId);
+                // Proje soft-delete → BOM satırlarını da SUNUCUDA soft-delete et (başka cihazın
+                // eklediği, silen cihazın yerelinde olmayan satırlar da temizlensin — bulgu #4;
+                // soft-delete FK CASCADE'i tetiklemez). Her biri change_log'a düşer → yayılır.
+                if ($entity === 'project') {
+                    foreach ($this->bom->forProject($id) as $child) {
+                        $childRow = $this->bom->softDelete((string) $child['id'], $updatedAt);
+                        $this->changeLog->append('bom_item', (string) $child['id'], 'delete', $childRow, $this->actorId);
+                    }
+                }
                 break;
 
             case 'stock_move':

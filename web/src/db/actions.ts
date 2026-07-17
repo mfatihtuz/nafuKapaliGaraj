@@ -381,15 +381,15 @@ export async function saveProject(input: { id?: string; name: string; status?: P
   const existing = input.id ? await db.projects.get(input.id) : undefined
   let locationId = existing?.location_id ?? null
 
+  // Yeni sanal konum gerekiyorsa kodunu transaction DIŞINDA hazırla (konum tablosunu okur).
+  let newLoc: Location | null = null
   if (!locationId) {
     const locId = uuidv7()
     const code = await uniqueProjectCode(input.name)
-    const loc: Location = {
+    newLoc = {
       id: locId, parent_id: null, code, name: input.name, type: 'project', path: code,
       photo_id: null, capacity_note: null, sort_order: 0, updated_at: ts, deleted_at: null,
     }
-    await db.locations.put(loc)
-    await enqueue({ type: 'upsert', entity: 'location', data: loc }) // ÖNCE (++seq)
     locationId = locId
   }
 
@@ -400,8 +400,16 @@ export async function saveProject(input: { id?: string; name: string; status?: P
     notes: input.notes ?? existing?.notes ?? null,
     updated_at: ts, deleted_at: null,
   }
-  await db.projects.put(proj)
-  await enqueue({ type: 'upsert', entity: 'project', data: proj })
+  // Atomik: konum + proje satırları ve op'ları TEK transaction'da (yarım durum bırakma).
+  // Konum op'u proje op'undan ÖNCE (++seq) → FK/mantık sırası korunur.
+  const ops: OutboxOp[] = []
+  if (newLoc) ops.push({ op_id: uuidv7(), type: 'upsert', entity: 'location', data: newLoc, created_at: Date.now(), attempts: 0 })
+  ops.push({ op_id: uuidv7(), type: 'upsert', entity: 'project', data: proj, created_at: Date.now(), attempts: 0 })
+  await db.transaction('rw', db.locations, db.projects, db.outbox, async () => {
+    if (newLoc) await db.locations.put(newLoc)
+    await db.projects.put(proj)
+    await db.outbox.bulkAdd(ops)
+  })
   engine.schedule()
   return projId
 }

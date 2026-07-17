@@ -377,6 +377,11 @@ export function useProjectFeasibility(projectId: string | undefined): Feasibilit
 
       const locs = await db.locations.toArray()
       const locById = new Map(locs.map((l) => [l.id, l]))
+      // BU projeye ZATEN çekilmiş parça (kendi proje gözü) de 'elde' sayılır — aksi hâlde
+      // tamamı hazırlanmış proje yanlışlıkla 'eksik' görünürdü (bulgu #3). Başka projelerin/
+      // ödünç/karantina gözleri yine dışlanır (isFreeStock).
+      const ownLoc = (await db.projects.get(projectId))?.location_id ?? null
+      const counts = (s: { location_id: string }) => isFreeStock(locById.get(s.location_id)) || s.location_id === ownLoc
 
       const lines: FeasibilityLine[] = []
       for (const bom of boms) {
@@ -390,7 +395,7 @@ export function useProjectFeasibility(projectId: string | undefined): Feasibilit
           continue
         }
         const rows = (await db.stock.where('part_id').equals(part.id).toArray())
-          .filter((s) => isFreeStock(locById.get(s.location_id)))
+          .filter(counts)
         const need = Number(bom.qty_needed)
         if (part.count_mode === 'level') {
           // Doluluk: serbest bir konumda DOLU/AZ varsa "var" say.

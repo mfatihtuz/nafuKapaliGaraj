@@ -1241,6 +1241,38 @@ await sect('BB-projects', {}, async ({ page, pageErrors }) => {
   check('BB10 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ CC. FEASIBILITY ÖZ-STOK (#3) + ÇOK KONUMDAN ÇEKME (#2) ════════════════
+await sect('CC-project-fixes', {}, async ({ page, pageErrors }) => {
+  // p-r'ye ikinci serbest konumda (c11 çekmece) 20 adet ekle → toplam serbest 50+20=70
+  await page.evaluate(async ({ NOW }) => {
+    await new Promise((res, rej) => {
+      const o = indexedDB.open('depo')
+      o.onsuccess = () => { const dbx = o.result; const tx = dbx.transaction('stock', 'readwrite')
+        tx.objectStore('stock').put({ key: 'p-r|c11', part_id: 'p-r', location_id: 'c11', qty: 20, level: null, level_at: null, last_move_at: NOW })
+        tx.oncomplete = () => { dbx.close(); res() }; tx.onerror = () => rej(tx.error) }
+    })
+  }, { NOW })
+  await page.goto(BASE + 'projects', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: /Yeni proje/ }).click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder*="LED Saat"]').fill('Öz Stok')
+  await page.locator('.card').getByRole('button', { name: 'Kaydet', exact: true }).click(); await page.waitForTimeout(700)
+  const proj = (await dexie(page, 'projects')).find((p) => p.name === 'Öz Stok')
+  await page.goto(BASE + `projects/${proj.id}`, { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.locator('textarea').first().fill('ref;value;footprint;qty\nR1;10k;R_0805;60'); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: /içe aktar \(mevcut BOM/ }).click(); await page.waitForTimeout(700)
+  check('CC1 başta yapılabilir (serbest 70 ≥ 60)', (await bodyText(page)).toLowerCase().includes('yapılabilir'))
+  // Çek → 50 (d1) + 10 (c11) = 60 topla
+  await page.getByRole('button', { name: 'Çek', exact: true }).first().click(); await page.waitForTimeout(900)
+  const st = await dexie(page, 'stock')
+  const prj = st.find((s) => s.part_id === 'p-r' && s.location_id === proj.location_id)
+  check('CC2 çok konumdan toplandı: proje gözü 60 (#2)', Number(prj?.qty) === 60, `prj=${prj?.qty}`)
+  check('CC3 d1 tükendi (50→0)', Number(st.find((s) => s.key === 'p-r|d1')?.qty) === 0)
+  check('CC4 c11 kısmen (20→10)', Number(st.find((s) => s.key === 'p-r|c11')?.qty) === 10)
+  // Serbest artık 10 (<60) ama proje gözünde 60 → HÂLÂ yapılabilir (#3)
+  check('CC5 çekildikten sonra HÂLÂ yapılabilir (öz-stok sayılır #3)', (await bodyText(page)).toLowerCase().includes('yapılabilir'))
+  check('CC6 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ---------------------------------------------------------------------------
 await browser.close()
 const fails = results.filter((r) => !r.ok)

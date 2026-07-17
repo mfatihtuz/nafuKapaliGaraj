@@ -571,6 +571,21 @@ fwrite(STDOUT, "\nTEST 21 — Projeler + BOM (FAZ 3a): LWW katalog sync, bootstr
     $rc2 = $svcB->push([['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'bom_item',
         'data' => ['id' => Uuid::v7(), 'project_id' => $crossProj, 'part_id' => $ids['part_id'], 'qty_needed' => 1, 'updated_at' => iso(3)]]]);
     eq(count($rc2['rejected']), 1, 'B, A\'nın parçasını BOM\'a bağlayamaz (çapraz-tenant reddi)');
+
+    // Proje soft-delete SUNUCUDA bom_items'a cascade eder (silen cihaz bilmese de — bulgu #4)
+    $delProj = ['op_id' => Uuid::v7(), 'type' => 'delete', 'entity' => 'project',
+        'data' => ['id' => $projId, 'updated_at' => iso(50)]];
+    $rd = $svc->push([$delProj]);
+    eq(count($rd['applied']), 1, 'proje delete uygulandı');
+    $afterProj = $db->one('SELECT deleted_at FROM projects WHERE id = :id', ['id' => $projId]);
+    check($afterProj !== null && $afterProj['deleted_at'] !== null, 'proje soft-delete edildi');
+    $afterBom = $db->one('SELECT deleted_at FROM bom_items WHERE id = :id', ['id' => $bomId]);
+    check($afterBom !== null && $afterBom['deleted_at'] !== null, 'BOM satırı da SUNUCUDA soft-delete edildi (cascade)');
+    eq(count($svc->bootstrap()['bom_items']), 0, 'proje silinince aktif BOM kalmadı');
+    // Cascade delete change_log'a düştü → başka cihaz pull ile alır
+    $pullDel = $svc->pull($pull['cursor'], 500);
+    $delEnts = array_filter($pullDel['changes'], fn ($c) => ($c['entity'] ?? '') === 'bom_item' && ($c['op'] ?? '') === 'delete');
+    check(count($delEnts) >= 1, 'BOM cascade-delete pull change-feed\'e düştü (diğer cihaza yayılır)');
 }
 
 exit(test_summary());

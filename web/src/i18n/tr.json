@@ -32,6 +32,7 @@
     "pick_part": "Parça seç",
     "pull": "Çek",
     "pulled": "Projeye çekildi",
+    "pulled_partial": "{pulled}/{needed} çekildi — serbest stok yetmedi",
     "no_free_stock": "Serbest stok yok (çekilecek parça bulunamadı)",
     "bom_import": "BOM içe aktar",
     "bom_placeholder": "KiCad/CSV yapıştır: ref;value;footprint;mpn;qty",
@@ -99,6 +100,7 @@
     "notes": "Not",
     "optional": "isteğe bağlı",
     "none": "—",
+    "error": "Bir sorun oluştu",
     "search_placeholder": "Ara: M3 vida, 10k direnç, matkap ucu…"
   },
   "sync": {

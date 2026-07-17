@@ -21,16 +21,15 @@ import { IconCheck, IconBack, IconTrash, IconUpload, IconX } from '../components
 
 const STATUSES: ProjectStatus[] = ['planned', 'active', 'done', 'archived']
 
-/** Bir parçanın SERBEST konumlardaki toplam adedi + en dolu kaynak konumu. */
-async function freeStockOf(part: Part): Promise<{ total: number; best: Stock | null; bestLevel: Stock | null }> {
+/** Bir parçanın SERBEST konumlardaki stok satırları (en dolu → en boş) + doluluk kaynağı. */
+async function freeStockOf(part: Part): Promise<{ rows: Stock[]; bestLevel: Stock | null }> {
   const rows = await db.stock.where('part_id').equals(part.id).toArray()
   const locs = await db.locations.toArray()
   const byId = new Map(locs.map((l) => [l.id, l]))
   const free = rows.filter((s) => isFreeStock(byId.get(s.location_id)))
-  const total = free.reduce((s, r) => s + Math.max(0, Number(r.qty)), 0)
-  const best = free.filter((s) => Number(s.qty) > 0).sort((a, b) => Number(b.qty) - Number(a.qty))[0] ?? null
+  const withQty = free.filter((s) => Number(s.qty) > 0).sort((a, b) => Number(b.qty) - Number(a.qty))
   const bestLevel = free.filter((s) => s.level === 'full' || s.level === 'low')[0] ?? null
-  return { total, best, bestLevel }
+  return { rows: withQty, bestLevel }
 }
 
 // --- "Yapabilir miyim?" bandı (salt-özet) -----------------------------------
@@ -109,7 +108,8 @@ function BomSection({ projectId, projectLocationId }: { projectId: string; proje
   const [matchFor, setMatchFor] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // Bir BOM kalemini projeye çek: en dolu serbest kaynaktan qty_needed (mevcutla sınırlı).
+  // Bir BOM kalemini projeye çek: gereken adedi BİRDEN ÇOK serbest çekmeceden topla
+  // (en dolu → en boş); fiilen çekilen miktarı dürüstçe bildir (eksikse uyar — bulgu #2).
   async function pull(part: Part, needed: number) {
     if (!projectLocationId) return
     setBusy(true)
@@ -118,11 +118,21 @@ function BomSection({ projectId, projectLocationId }: { projectId: string; proje
       if (part.count_mode === 'level') {
         if (!fs.bestLevel) { toast.show(t('project.no_free_stock'), 'error'); return }
         await pullToProject(part, fs.bestLevel.location_id, projectLocationId, 0, projectId, fs.bestLevel.level)
-      } else {
-        if (!fs.best) { toast.show(t('project.no_free_stock'), 'error'); return }
-        await pullToProject(part, fs.best.location_id, projectLocationId, Math.min(needed, Number(fs.best.qty)), projectId)
+        toast.show(t('project.pulled'), 'success')
+        return
       }
-      toast.show(t('project.pulled'), 'success')
+      let remaining = needed, pulled = 0
+      for (const s of fs.rows) {
+        if (remaining <= 0) break
+        const take = Math.min(remaining, Number(s.qty))
+        await pullToProject(part, s.location_id, projectLocationId, take, projectId)
+        remaining -= take; pulled += take
+      }
+      if (pulled === 0) toast.show(t('project.no_free_stock'), 'error')
+      else if (pulled < needed) toast.show(t('project.pulled_partial', { pulled, needed }), 'info')
+      else toast.show(t('project.pulled'), 'success')
+    } catch {
+      toast.show(t('common.error'), 'error') // sessiz başarısızlık olmasın (bulgu #14)
     } finally { setBusy(false) }
   }
 
@@ -224,24 +234,32 @@ function ProjectContents({ project }: { project: { id: string; location_id: stri
   const toast = useToast()
   const { canWrite } = useAuth()
   const contents = useStockAtLocation(project.location_id ?? undefined)
+  // Çift-dokunuş kilidi (mobil/tek-el): işlenen parça id'si → aynı satıra ikinci kez basıp
+  // proje gözünü negatife düşürmek / hedefte hayalet stok üretmek engellenir (bulgu #1).
+  const [busyId, setBusyId] = useState<string | null>(null)
 
   async function ret(part: Part, stock: Stock) {
-    if (!project.location_id) return
-    // İade: parçanın çekildiği serbest bir çekmeceye (en dolusu) geri gönder; yoksa uyar.
-    const rows = await db.stock.where('part_id').equals(part.id).toArray()
-    const locs = await db.locations.toArray(); const byId = new Map(locs.map((l) => [l.id, l]))
-    const target = rows.filter((s) => s.location_id !== project.location_id && isFreeStock(byId.get(s.location_id)))
-      .sort((a, b) => Number(b.qty) - Number(a.qty))[0]
-      ?? rows.filter((s) => s.location_id !== project.location_id && isFreeStock(byId.get(s.location_id)))[0]
-    if (!target) { toast.show(t('project.no_return_target'), 'error'); return }
-    if (part.count_mode === 'level') await returnFromProject(part, project.location_id, target.location_id, 0, project.id, stock.level)
-    else await returnFromProject(part, project.location_id, target.location_id, Number(stock.qty), project.id)
-    toast.show(t('project.returned'), 'success')
+    if (!project.location_id || busyId) return
+    setBusyId(part.id)
+    try {
+      // İade: parçanın çekildiği serbest bir çekmeceye (en dolusu) geri gönder; yoksa uyar.
+      const rows = await db.stock.where('part_id').equals(part.id).toArray()
+      const locs = await db.locations.toArray(); const byId = new Map(locs.map((l) => [l.id, l]))
+      const target = rows.filter((s) => s.location_id !== project.location_id && isFreeStock(byId.get(s.location_id)))
+        .sort((a, b) => Number(b.qty) - Number(a.qty))[0]
+      if (!target) { toast.show(t('project.no_return_target'), 'error'); return }
+      if (part.count_mode === 'level') await returnFromProject(part, project.location_id, target.location_id, 0, project.id, stock.level)
+      else await returnFromProject(part, project.location_id, target.location_id, Number(stock.qty), project.id)
+      toast.show(t('project.returned'), 'success')
+    } catch { toast.show(t('common.error'), 'error') } finally { setBusyId(null) }
   }
   async function use(part: Part, stock: Stock) {
-    if (!project.location_id) return
-    await consumeInProject(part, project.location_id, Number(stock.qty), project.id)
-    toast.show(t('project.consumed'), 'success')
+    if (!project.location_id || busyId) return
+    setBusyId(part.id)
+    try {
+      await consumeInProject(part, project.location_id, Number(stock.qty), project.id)
+      toast.show(t('project.consumed'), 'success')
+    } catch { toast.show(t('common.error'), 'error') } finally { setBusyId(null) }
   }
 
   if (contents.length === 0) return null
@@ -258,8 +276,8 @@ function ProjectContents({ project }: { project: { id: string; location_id: stri
               </span>
               {canWrite && (
                 <>
-                  <button onClick={() => void ret(part, stock)} className="text-xs text-accent hover:underline">{t('project.return')}</button>
-                  <button onClick={() => void use(part, stock)} className="text-xs text-red-600 hover:underline">{t('project.consume')}</button>
+                  <button disabled={!!busyId} onClick={() => void ret(part, stock)} className="text-xs text-accent hover:underline disabled:opacity-40">{t('project.return')}</button>
+                  <button disabled={!!busyId} onClick={() => void use(part, stock)} className="text-xs text-red-600 hover:underline disabled:opacity-40">{t('project.consume')}</button>
                 </>
               )}
             </span>
