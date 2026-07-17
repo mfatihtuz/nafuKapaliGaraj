@@ -1,9 +1,11 @@
-import { useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { AppHeader, Container } from '../components/Layout'
 import { useShoppingList, type ShoppingItem } from '../db/queries'
+import { createPoFromShortages } from '../db/actions'
 import { copyText } from '../lib/clipboard'
 import { useT } from '../i18n'
+import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
 import { IconCart } from '../components/icons'
 
@@ -11,7 +13,25 @@ import { IconCart } from '../components/icons'
 export function Shopping() {
   const { t } = useT()
   const toast = useToast()
+  const { canWrite } = useAuth()
+  const navigate = useNavigate()
   const items = useShoppingList()
+  const [busy, setBusy] = useState(false)
+
+  // Eksiklerden taslak sipariş: exact → (min-have, en az 1); level (bitti) → 1 adet.
+  async function toOrder() {
+    if (items.length === 0) return
+    setBusy(true)
+    try {
+      const lines = items.map((it) => ({
+        partId: it.part.id,
+        qty: it.mode === 'exact' ? Math.max(1, Math.ceil(it.min - it.have)) : 1,
+      }))
+      const poId = await createPoFromShortages(lines)
+      toast.show(t('po.created_from_shortages', { n: lines.length }), 'success')
+      navigate(`/orders/${poId}`)
+    } finally { setBusy(false) }
+  }
 
   // Kategoriye göre grupla (kopya metni + görsel liste aynı sıradan).
   const groups = useMemo(() => {
@@ -45,9 +65,15 @@ export function Shopping() {
   return (
     <>
       <AppHeader back title={t('shopping.title')} right={
-        items.length > 0 ? (
-          <button onClick={() => void copyAll()} className="btn-primary h-9 px-3 text-sm">{t('shopping.copy')}</button>
-        ) : null
+        <div className="flex items-center gap-2">
+          <Link to="/orders" className="btn-ghost h-9 px-3 text-sm"><IconCart size={16} /> <span className="hidden sm:inline">{t('po.page_title')}</span></Link>
+          {items.length > 0 && (
+            <button onClick={() => void copyAll()} className="btn-ghost h-9 px-3 text-sm">{t('shopping.copy')}</button>
+          )}
+          {canWrite && items.length > 0 && (
+            <button onClick={() => void toOrder()} disabled={busy} className="btn-primary h-9 px-3 text-sm disabled:opacity-50">{t('po.from_shortages')}</button>
+          )}
+        </div>
       } />
       <Container>
         {items.length === 0 ? (

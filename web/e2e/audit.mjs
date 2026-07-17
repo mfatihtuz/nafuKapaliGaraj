@@ -1332,6 +1332,44 @@ await sect('EE-loans', {}, async ({ page, pageErrors }) => {
   check('EE11 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ FF. SİPARİŞ / PO (FAZ 3b 3.6) ═════════════════════════════════════════
+await sect('FF-orders', {}, async ({ page, pageErrors }) => {
+  // Alışveriş → "Siparişe ekle" köprüsü: p-zero (min yok) yerine doğrudan /orders akışı
+  await page.goto(BASE + 'orders', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  check('FF1 Siparişler ekranı boş durum', (await bodyText(page)).includes('Henüz sipariş yok'))
+  await page.getByRole('button', { name: /Yeni sipariş/ }).click(); await page.waitForTimeout(700)
+  check('FF2 yeni sipariş detayına yönlendi', /\/orders\/[0-9a-f-]{36}$/.test(page.url()), page.url())
+
+  // Satır ekle: p-r'yi ara-seç, adet 100, fiyat 0,50
+  await page.locator('input[placeholder*="Parça ara"]').fill('10K'); await page.waitForTimeout(300)
+  await page.getByRole('button', { name: /10K Direnç/ }).first().click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder="Adet"]').fill('100')
+  await page.locator('input[placeholder="Birim fiyat"]').fill('0,50')
+  await page.locator('div.flex.gap-2:has(input[placeholder="Birim fiyat"]) button').click(); await page.waitForTimeout(600)
+  let poItems = await dexie(page, 'poItems')
+  const line = poItems.find((i) => i.part_id === 'p-r' && !i.deleted_at)
+  check('FF3 sipariş satırı eklendi (p-r, 100, 0.5)', !!line && Number(line.qty) === 100 && Number(line.unit_price) === 0.5, JSON.stringify(line))
+  check('FF4 toplam görünüyor (50)', (await bodyText(page)).includes('50'))
+
+  // Durum: taslak → sipariş verildi
+  await page.getByRole('button', { name: /Sipariş verildi olarak işaretle/ }).click(); await page.waitForTimeout(500)
+  const pos = await dexie(page, 'purchaseOrders')
+  check('FF5 durum ordered + ordered_at damgalandı', pos[0]?.status === 'ordered' && !!pos[0]?.ordered_at)
+
+  // Teslim al → D1'e (kısmi değil, tam 100)
+  await page.getByRole('button', { name: 'Teslim al', exact: true }).first().click(); await page.waitForTimeout(250)
+  await page.locator('input[placeholder*="onum kodu"]').fill('D1'); await page.waitForTimeout(250)
+  await page.locator('button.btn-primary', { hasText: 'Teslim al' }).click(); await page.waitForTimeout(700)
+  const stock = await dexie(page, 'stock')
+  check('FF6 teslim: stok +100 (d1: 50→150, purchase defteri)', stock.find((s) => s.key === 'p-r|d1')?.qty === 150, JSON.stringify(stock.find((s) => s.key === 'p-r|d1')))
+  poItems = await dexie(page, 'poItems')
+  check('FF7 received_qty 0→100', Number(poItems.find((i) => i.id === line.id)?.received_qty) === 100)
+  const tx = await dexie(page, 'transactions')
+  check('FF8 purchase hareketi ref_id=satır', tx.some((t) => t.reason === 'purchase' && t.ref_id === line.id && Number(t.delta) === 100))
+  check('FF9 satır "Tamam" rozeti (tam teslim)', (await bodyText(page)).includes('Tamam'))
+  check('FF10 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ---------------------------------------------------------------------------
 await browser.close()
 const fails = results.filter((r) => !r.ok)

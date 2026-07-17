@@ -14,7 +14,9 @@ use Depo\Repository\LocationRepository;
 use Depo\Repository\BomRepository;
 use Depo\Repository\PartRepository;
 use Depo\Repository\PartSupplierRepository;
+use Depo\Repository\PoItemRepository;
 use Depo\Repository\ProjectRepository;
+use Depo\Repository\PurchaseOrderRepository;
 use Depo\Repository\StockRepository;
 use Depo\Repository\SupplierRepository;
 use Depo\Repository\SyncOpRepository;
@@ -39,6 +41,8 @@ final class SyncService
     private SupplierRepository $suppliers;
     private PartSupplierRepository $partSuppliers;
     private LoanRepository $loans;
+    private PurchaseOrderRepository $purchaseOrders;
+    private PoItemRepository $poItems;
     private StockRepository $stock;
     private TransactionRepository $tx;
     private ChangeLogRepository $changeLog;
@@ -60,6 +64,8 @@ final class SyncService
         $this->suppliers = new SupplierRepository($db, $tenantId, $clockSkewMinutes);
         $this->partSuppliers = new PartSupplierRepository($db, $tenantId, $clockSkewMinutes);
         $this->loans = new LoanRepository($db, $tenantId, $clockSkewMinutes);
+        $this->purchaseOrders = new PurchaseOrderRepository($db, $tenantId, $clockSkewMinutes);
+        $this->poItems = new PoItemRepository($db, $tenantId, $clockSkewMinutes);
         $this->stock = new StockRepository($db, $tenantId);
         $this->tx = new TransactionRepository($db, $tenantId, $clockSkewMinutes);
         $this->changeLog = new ChangeLogRepository($db, $tenantId);
@@ -99,6 +105,8 @@ final class SyncService
                 'suppliers'          => $this->suppliers->allActive(),
                 'part_suppliers'     => $this->partSuppliers->allActive(),
                 'loans'              => $this->loans->allActive(),
+                'purchase_orders'    => $this->purchaseOrders->allActive(),
+                'po_items'           => $this->poItems->allActive(),
                 'stock_snapshot'     => $this->stock->snapshot(),
                 'stock_transactions' => $this->tx->recentForBootstrap(90),
                 'cursor'             => $this->changeLog->maxSeq(),
@@ -293,6 +301,14 @@ final class SyncService
                         $this->changeLog->append('bom_item', (string) $child['id'], 'delete', $childRow, $this->actorId);
                     }
                 }
+                // Sipariş soft-delete → satırları da SUNUCUDA soft-delete et (project→bom ile aynı
+                // gerekçe: soft-delete FK CASCADE tetiklemez; başka cihazın eklediği satır da temizlensin).
+                if ($entity === 'purchase_order') {
+                    foreach ($this->poItems->forPo($id) as $child) {
+                        $childRow = $this->poItems->softDelete((string) $child['id'], $updatedAt);
+                        $this->changeLog->append('po_item', (string) $child['id'], 'delete', $childRow, $this->actorId);
+                    }
+                }
                 break;
 
             case 'stock_move':
@@ -312,7 +328,7 @@ final class SyncService
         $this->syncOps->record($opId);
     }
 
-    private function catalogRepo(string $entity): PartRepository|LocationRepository|CategoryRepository|AttachmentRepository|ProjectRepository|BomRepository|SupplierRepository|PartSupplierRepository|LoanRepository
+    private function catalogRepo(string $entity): PartRepository|LocationRepository|CategoryRepository|AttachmentRepository|ProjectRepository|BomRepository|SupplierRepository|PartSupplierRepository|LoanRepository|PurchaseOrderRepository|PoItemRepository
     {
         return match ($entity) {
             'part'       => $this->parts,
@@ -324,6 +340,8 @@ final class SyncService
             'supplier'      => $this->suppliers,    // FAZ 3b — LWW katalog
             'part_supplier' => $this->partSuppliers, // FAZ 3b — deterministik id (uq_ps)
             'loan'          => $this->loans,        // FAZ 3b — ödünç kaydı (LWW; stok ayrı defterde)
+            'purchase_order' => $this->purchaseOrders, // FAZ 3b — sipariş (LWW)
+            'po_item'        => $this->poItems,     // FAZ 3b — PO op'undan SONRA (FK sırası)
             default      => throw HttpException::unprocessable('Senkronlanamayan varlık: ' . $entity),
         };
     }

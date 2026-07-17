@@ -20,6 +20,8 @@ const Shopping = lazyReload(() => import('./pages/Shopping').then((m) => ({ defa
 const Projects = lazyReload(() => import('./pages/Projects').then((m) => ({ default: m.Projects })))
 const ProjectDetail = lazyReload(() => import('./pages/ProjectDetail').then((m) => ({ default: m.ProjectDetail })))
 const Loans = lazyReload(() => import('./pages/Loans').then((m) => ({ default: m.Loans })))
+const Orders = lazyReload(() => import('./pages/Orders').then((m) => ({ default: m.Orders })))
+const OrderDetail = lazyReload(() => import('./pages/OrderDetail').then((m) => ({ default: m.OrderDetail })))
 
 const BASENAME = import.meta.env.BASE_URL.replace(/\/$/, '')
 
@@ -82,6 +84,8 @@ export default function App() {
               <Route path="projects" element={<Projects />} />
               <Route path="projects/:id" element={<ProjectDetail />} />
               <Route path="loans" element={<Loans />} />
+              <Route path="orders" element={<Orders />} />
+              <Route path="orders/:id" element={<OrderDetail />} />
               <Route path="*" element={<Navigate to="scan" replace />} />
             </Route>
           </Routes>

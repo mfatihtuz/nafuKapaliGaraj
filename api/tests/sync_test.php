@@ -693,4 +693,73 @@ fwrite(STDOUT, "\nTEST 23 — Ödünç (FAZ 3b 3.4): loan LWW kaydı + loan_out/
     eq(count($rCross['rejected']), 1, 'B, A parçasını ödünç bağlayamaz (çapraz-tenant reddi)');
 }
 
+fwrite(STDOUT, "\nTEST 24 — Sipariş/PO (FAZ 3b 3.6): PO+satır (FK sırası), teslim alma (purchase defteri), cascade soft-delete, tenant izolasyonu\n");
+{
+    [$db] = make_test_db();
+    $t = seed_tenant($db);
+    $svc = new SyncService($db, $t['tenant_id'], $t['user_id']);
+    $ids = scaffold($svc);
+
+    // Tedarikçi + PO (taslak) + satır — po_item PO'dan SONRA (FK fk_poi_po)
+    $supId = Uuid::v7();
+    $poId = Uuid::v7();
+    $poiId = Uuid::v7();
+    $r = $svc->push([
+        ['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'supplier',
+            'data' => ['id' => $supId, 'name' => 'LCSC', 'updated_at' => iso(1)]],
+        ['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'purchase_order',
+            'data' => ['id' => $poId, 'supplier_id' => $supId, 'status' => 'ordered', 'ordered_at' => iso(2),
+                       'currency' => 'USD', 'updated_at' => iso(2)]],
+        ['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'po_item',
+            'data' => ['id' => $poiId, 'po_id' => $poId, 'part_id' => $ids['part_id'], 'qty' => 100,
+                       'unit_price' => 0.01, 'received_qty' => 0, 'target_location_id' => $ids['location_id'], 'updated_at' => iso(2)]],
+    ]);
+    eq(count($r['applied']), 3, 'tedarikçi + PO + satır uygulandı');
+    $boot = $svc->bootstrap();
+    eq(count($boot['purchase_orders']), 1, 'bootstrap 1 sipariş');
+    eq(count($boot['po_items']), 1, 'bootstrap 1 sipariş satırı');
+
+    // po_item PO'dan ÖNCE gelirse FK reddi (istemci ++seq ile sıralar; bu koruma test edilir)
+    $rFk = $svc->push([['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'po_item',
+        'data' => ['id' => Uuid::v7(), 'po_id' => Uuid::v7(), 'qty' => 1, 'received_qty' => 0, 'updated_at' => iso(3)]]]);
+    eq(count($rFk['rejected']), 1, 'olmayan PO\'ya satır → FK reddi');
+
+    // Teslim alma: purchase hareketi (ref_id=poiId) + received_qty LWW + PO received
+    $recv = opMove($ids['part_id'], $ids['location_id'], 100, 'purchase', iso(10));
+    $recv['data']['ref_id'] = $poiId;
+    $rr = $svc->push([
+        $recv,
+        ['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'po_item',
+            'data' => ['id' => $poiId, 'po_id' => $poId, 'part_id' => $ids['part_id'], 'qty' => 100,
+                       'received_qty' => 100, 'target_location_id' => $ids['location_id'], 'updated_at' => iso(10)]],
+        ['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'purchase_order',
+            'data' => ['id' => $poId, 'supplier_id' => $supId, 'status' => 'received', 'ordered_at' => iso(2),
+                       'received_at' => iso(10), 'currency' => 'USD', 'updated_at' => iso(10)]],
+    ]);
+    eq(count($rr['rejected']), 0, 'teslim alma reddedilmedi');
+    eq(currentQty($svc, $ids['part_id'], $ids['location_id']), 100.0, 'teslim sonrası stok +100 (purchase defteri)');
+    $poiRow = $db->one('SELECT received_qty FROM po_items WHERE id = :id', ['id' => $poiId]);
+    check(abs((float) $poiRow['received_qty'] - 100.0) < 1e-9, 'received_qty 0→100 (LWW)');
+    $poRow = $db->one('SELECT status FROM purchase_orders WHERE id = :id', ['id' => $poId]);
+    eq($poRow['status'], 'received', 'PO durumu received');
+
+    // Cascade soft-delete: PO silinince satırları da soft-delete + change-feed'e düşer
+    $cur = $svc->bootstrap()['cursor'];
+    $svc->push([['op_id' => Uuid::v7(), 'type' => 'delete', 'entity' => 'purchase_order',
+        'data' => ['id' => $poId, 'updated_at' => iso(20)]]]);
+    $poiDel = $db->one('SELECT deleted_at FROM po_items WHERE id = :id', ['id' => $poiId]);
+    check($poiDel !== null && $poiDel['deleted_at'] !== null, 'PO silinince satır da soft-delete (cascade)');
+    $pullDel = $svc->pull($cur, 500);
+    $delEnts = array_filter($pullDel['changes'], fn ($c) => ($c['entity'] ?? '') === 'po_item' && ($c['op'] ?? '') === 'delete');
+    check(count($delEnts) >= 1, 'PO cascade-delete pull change-feed\'e düştü (diğer cihaza yayılır)');
+
+    // Tenant izolasyonu: B, A'nın tedarikçisini PO'ya bağlayamaz
+    $tb = seed_tenant($db, 'B');
+    $svcB = new SyncService($db, $tb['tenant_id'], $tb['user_id']);
+    eq(count($svcB->bootstrap()['purchase_orders']), 0, 'B tenant A siparişini görmez');
+    $rCross = $svcB->push([['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'purchase_order',
+        'data' => ['id' => Uuid::v7(), 'supplier_id' => $supId, 'status' => 'draft', 'updated_at' => iso(21)]]]);
+    eq(count($rCross['rejected']), 1, 'B, A tedarikçisini PO\'ya bağlayamaz (çapraz-tenant reddi)');
+}
+
 exit(test_summary());

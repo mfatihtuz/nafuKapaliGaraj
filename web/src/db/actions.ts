@@ -5,7 +5,7 @@ import { db } from './dexie'
 import type {
   Part, Location, Category, Stock, StockLevel, TxReason, Transaction, OutboxOp,
   AttachmentOwnerType, AttachmentKind, PendingUpload, Project, ProjectStatus, BomItem,
-  Supplier, PartSupplier, Loan,
+  Supplier, PartSupplier, Loan, PurchaseOrder, PoItem, PoStatus,
 } from './types'
 import { uuidv7, deterministicUuid } from '../lib/uuid'
 import { nowIso } from '../lib/format'
@@ -707,4 +707,139 @@ export async function saveLoan(loan: Loan): Promise<void> {
   await db.loans.put(row)
   await enqueue({ type: 'upsert', entity: 'loan', data: row })
   engine.schedule()
+}
+
+// --- Sipariş / PO (FAZ 3b — 3.6) --------------------------------------------
+
+/** Sipariş (PO) oluştur/güncelle. Yeni PO 'draft' başlar; teslim akışı stoğu 'purchase' defteriyle işler. */
+export async function savePurchaseOrder(input: {
+  id?: string; supplierId?: string | null; status?: PoStatus; note?: string | null; currency?: string
+}): Promise<string> {
+  const ts = nowIso()
+  const existing = input.id ? await db.purchaseOrders.get(input.id) : undefined
+  const row: PurchaseOrder = {
+    id: input.id ?? uuidv7(),
+    supplier_id: input.supplierId ?? existing?.supplier_id ?? null,
+    status: input.status ?? existing?.status ?? 'draft',
+    ordered_at: existing?.ordered_at ?? null,
+    received_at: existing?.received_at ?? null,
+    total: existing?.total ?? null,
+    currency: input.currency ?? existing?.currency ?? 'TRY',
+    note: (input.note ?? existing?.note ?? null) || null,
+    updated_at: ts, deleted_at: null,
+  }
+  await db.purchaseOrders.put(row)
+  await enqueue({ type: 'upsert', entity: 'purchase_order', data: row })
+  engine.schedule()
+  return row.id
+}
+
+/** PO durumunu değiştir; ordered_at/received_at damgalarını uygun şekilde doldurur (LWW). */
+export async function setPoStatus(po: PurchaseOrder, status: PoStatus): Promise<void> {
+  const ts = nowIso()
+  const row: PurchaseOrder = {
+    ...po, status,
+    ordered_at: status === 'ordered' && !po.ordered_at ? ts : po.ordered_at,
+    received_at: status === 'received' ? ts : (status === 'draft' || status === 'ordered' ? null : po.received_at),
+    updated_at: ts,
+  }
+  await db.purchaseOrders.put(row)
+  await enqueue({ type: 'upsert', entity: 'purchase_order', data: row })
+  engine.schedule()
+}
+
+/** PO'yu kaldır (arşivle). Satırları da SOFT-delete edilir (sunucu da cascade eder). */
+export async function softDeletePurchaseOrder(id: string): Promise<void> {
+  const po = await db.purchaseOrders.get(id)
+  if (!po) return
+  const ts = nowIso()
+  const items = (await db.poItems.where('po_id').equals(id).toArray()).filter((i) => !i.deleted_at)
+  for (const it of items) {
+    await db.poItems.put({ ...it, deleted_at: ts, updated_at: ts })
+    await enqueue({ type: 'delete', entity: 'po_item', data: { id: it.id, updated_at: ts } })
+  }
+  await db.purchaseOrders.put({ ...po, deleted_at: ts, updated_at: ts })
+  await enqueue({ type: 'delete', entity: 'purchase_order', data: { id, updated_at: ts } })
+  engine.schedule()
+}
+
+/** Sipariş satırı ekle/güncelle. part_id yoksa raw_name (katalogda olmayan parça — teslim alınamaz). */
+export async function savePoItem(input: {
+  id?: string; poId: string; partId?: string | null; rawName?: string | null;
+  qty: number; unitPrice?: number | null; targetLocationId?: string | null;
+}): Promise<string> {
+  const ts = nowIso()
+  const existing = input.id ? await db.poItems.get(input.id) : undefined
+  const row: PoItem = {
+    id: input.id ?? uuidv7(), po_id: input.poId,
+    part_id: input.partId ?? existing?.part_id ?? null,
+    raw_name: (input.rawName ?? existing?.raw_name ?? null) || null,
+    qty: input.qty ?? existing?.qty ?? 0,
+    unit_price: input.unitPrice ?? existing?.unit_price ?? null,
+    received_qty: existing?.received_qty ?? 0,
+    target_location_id: input.targetLocationId ?? existing?.target_location_id ?? null,
+    updated_at: ts, deleted_at: null,
+  }
+  await db.poItems.put(row)
+  await enqueue({ type: 'upsert', entity: 'po_item', data: row })
+  engine.schedule()
+  return row.id
+}
+
+export async function deletePoItem(id: string): Promise<void> {
+  const ts = nowIso()
+  const local = await db.poItems.get(id)
+  if (local) await db.poItems.put({ ...local, deleted_at: ts, updated_at: ts })
+  await enqueue({ type: 'delete', entity: 'po_item', data: { id, updated_at: ts } })
+  engine.schedule()
+}
+
+/**
+ * Sipariş satırını teslim al: hedef göze 'purchase' hareketi (ref_id=po_item.id) + received_qty
+ * artışı (LWW). Ham satır (part_id yok) teslim alınamaz — önce parçaya eşleştir.
+ * @throws Error('PO_ITEM_NO_PART') | Error('QTY_ZERO')
+ */
+export async function receivePoItem(item: PoItem, targetLocationId: string, receiveQty: number): Promise<void> {
+  if (!item.part_id) throw new Error('PO_ITEM_NO_PART')
+  const n = Math.max(0, receiveQty)
+  if (n === 0) throw new Error('QTY_ZERO')
+  await moveStock({ partId: item.part_id, locationId: targetLocationId, delta: n, reason: 'purchase', refId: item.id })
+  const ts = nowIso()
+  const updated: PoItem = {
+    ...item, received_qty: Number(item.received_qty) + n,
+    target_location_id: targetLocationId, updated_at: ts,
+  }
+  await db.poItems.put(updated)
+  await enqueue({ type: 'upsert', entity: 'po_item', data: updated })
+  engine.schedule()
+}
+
+/**
+ * Eksiklerden taslak sipariş oluştur (feasibility/alışveriş köprüsü — 3.2↔3.6). PO + satırlar
+ * TEK yerel transaction'da; PO op'u satır op'larından ÖNCE (FK fk_poi_po sırası). Döner: poId.
+ */
+export async function createPoFromShortages(
+  lines: { partId: string; qty: number; unitPrice?: number | null }[],
+  supplierId?: string | null,
+): Promise<string> {
+  const ts = nowIso()
+  const poId = uuidv7()
+  const po: PurchaseOrder = {
+    id: poId, supplier_id: supplierId ?? null, status: 'draft', ordered_at: null,
+    received_at: null, total: null, currency: 'TRY', note: null, updated_at: ts, deleted_at: null,
+  }
+  const items: PoItem[] = lines.map((l) => ({
+    id: uuidv7(), po_id: poId, part_id: l.partId, raw_name: null,
+    qty: l.qty, unit_price: l.unitPrice ?? null, received_qty: 0,
+    target_location_id: null, updated_at: ts, deleted_at: null,
+  }))
+  const ops: OutboxOp[] = [{ op_id: uuidv7(), type: 'upsert', entity: 'purchase_order', data: po, created_at: Date.now(), attempts: 0 }]
+  for (const it of items) ops.push({ op_id: uuidv7(), type: 'upsert', entity: 'po_item', data: it, created_at: Date.now(), attempts: 0 })
+  await db.transaction('rw', db.purchaseOrders, db.poItems, db.outbox, async () => {
+    await db.purchaseOrders.put(po)
+    await db.poItems.bulkPut(items)
+    await db.outbox.bulkAdd(ops)
+  })
+  engine.schedule()
+  return poId
 }

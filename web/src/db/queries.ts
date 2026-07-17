@@ -2,7 +2,7 @@
 
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from './dexie'
-import type { Part, Location, Category, Stock, Attachment, PendingUpload, AttachmentOwnerType, Project, BomItem, Supplier, PartSupplier, Loan } from './types'
+import type { Part, Location, Category, Stock, Attachment, PendingUpload, AttachmentOwnerType, Project, BomItem, Supplier, PartSupplier, Loan, PurchaseOrder, PoItem } from './types'
 import { searchMatch } from '../lib/normalize'
 import { isFreeStock } from '../lib/freeStock'
 
@@ -485,5 +485,33 @@ export function useLoansForPart(partId: string | undefined): Loan[] {
         .sort((a, b) => (a.out_at < b.out_at ? 1 : -1))
     },
     [partId], [],
+  )
+}
+
+// --- Sipariş / PO (FAZ 3b — 3.6) --------------------------------------------
+
+/** Tüm siparişler (en yeni önce). Açık olanlar (draft/ordered) üstte gruplanır (UI'de). */
+export function usePurchaseOrders(): PurchaseOrder[] {
+  return useLiveQuery(
+    async () => (await db.purchaseOrders.filter((p) => !p.deleted_at).toArray())
+      .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
+    [], [],
+  )
+}
+
+export function usePurchaseOrder(id: string | undefined): PurchaseOrder | undefined {
+  return useLiveQuery(async () => (id ? db.purchaseOrders.get(id) : undefined), [id])
+}
+
+/** Bir siparişin aktif satırları. */
+export function usePoItems(poId: string | undefined): PoItem[] {
+  return useLiveQuery(
+    async () => {
+      if (!poId) return []
+      return (await db.poItems.where('po_id').equals(poId).toArray())
+        .filter((i) => !i.deleted_at)
+        .sort((a, b) => (a.id < b.id ? -1 : 1))
+    },
+    [poId], [],
   )
 }
