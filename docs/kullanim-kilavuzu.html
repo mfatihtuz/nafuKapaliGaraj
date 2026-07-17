@@ -241,6 +241,8 @@
       <a href="#foto">Fotoğraf</a>
       <a href="#eksik">Eksikler</a>
       <a href="#projeler">Projeler</a>
+      <a href="#odunc">Ödünç</a>
+      <a href="#siparis">Sipariş</a>
       <a href="#sozluk">Sözlük</a>
     </nav>
     <button class="toggle" id="themeBtn" aria-label="Temayı değiştir">
@@ -284,6 +286,10 @@
       <a href="#ai">Fotoğraftan tanı (AI)</a>
       <a href="#eksik">Eksikler / Alışveriş</a>
       <a href="#projeler">Projeler &amp; BOM</a>
+      <div class="grp">FAZ 3b özellikleri</div>
+      <a href="#odunc">Ödünç takibi</a>
+      <a href="#tedarikci">Tedarikçiler &amp; fiyat</a>
+      <a href="#siparis">Siparişler</a>
       <div class="grp">Referans</div>
       <a href="#sozluk">Kavramlar sözlüğü</a>
     </nav>
@@ -663,6 +669,99 @@
       </div>
       <div class="callout tip"><span class="ci"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-bulb"/></svg></span>
         <div><b>“Elde” ne demek:</b> Yapabilir hesabı yalnızca <b>serbest</b> stoğu sayar — başka projeye çekilmiş, ödünç verilmiş veya karantinadaki parçalar “elde” sayılmaz. Bu projeye çektiklerin ise bu proje için sayılır.</div>
+      </div>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- ============ ÖDÜNÇ ============ -->
+    <section id="odunc">
+      <div class="sec-head">
+        <span class="sec-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-move"/></svg></span>
+        <div><div class="kicker">Yeni · FAZ 3b <span class="phase done">Eklendi</span></div><h2 class="sec-title">Ödünç takibi — “Kimde ne var?”</h2></div>
+      </div>
+      <p class="lead">Bir parçayı birine ödünç verdiğinde stok kaybolmasın, kimde olduğu unutulmasın. Ödünç verilen parça depodan düşer ama <b>silinmez</b> — o kişinin “ödünç gözünde” durur; iade edince çekmeceye geri döner.</p>
+      <div class="grid2">
+        <div class="card">
+          <h3>Ödünç verme</h3>
+          <ol class="steps">
+            <li>Parça ekranında <b>Ödünç</b> kartından <b>Ödünç ver</b>’e bas.</li>
+            <li><b>Kime</b> verdiğini yaz (istersen telefon), hangi <b>gözden</b> ve kaç <b>adet</b> gittiğini seç, istersen <b>geri getirme tarihi</b> gir.</li>
+            <li>Stok o gözden düşer; aynı kişiye verdiğin her şey tek “ödünç gözünde” toplanır.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>İade &amp; takip</h3>
+          <ul class="ticks">
+            <li><b>Ödünçler</b> ekranı (Projeler başlığındaki bağlantı) kimde ne olduğunu <b>kişiye göre</b> gösterir.</li>
+            <li>Vadesi geçenler <b>kırmızı “Vadesi geçti”</b> rozetiyle en üstte.</li>
+            <li><b>İade al</b> → hangi çekmeceye geri koyduğunu seç; stok geri döner, ödünç kaydı kapanır (geçmiş silinmez).</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout tip"><span class="ci"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-bulb"/></svg></span>
+        <div>Ödünç verilen parça “elde” sayılmaz — proje <b>yapabilir miyim?</b> hesabına ve eldeki toplama girmez. Geri gelince otomatik yeniden sayılır.</div>
+      </div>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- ============ TEDARİKÇİLER ============ -->
+    <section id="tedarikci">
+      <div class="sec-head">
+        <span class="sec-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-cart"/></svg></span>
+        <div><div class="kicker">Yeni · FAZ 3b <span class="phase done">Eklendi</span></div><h2 class="sec-title">Tedarikçiler &amp; fiyat</h2></div>
+      </div>
+      <p class="lead">Bir parçayı nereden, ne fiyata aldığını sakla; bir dahaki sefere aramakla uğraşma. En ucuz tedarikçi kartta öne çıkar.</p>
+      <div class="grid2">
+        <div class="card">
+          <h3>Fiyat/tedarikçi ekleme</h3>
+          <ol class="steps">
+            <li>Parça ekranında <b>Tedarikçiler &amp; Fiyat</b> kartından <b>Tedarikçi ekle</b>’ye bas.</li>
+            <li>Var olan tedarikçiyi <b>seç</b> ya da yeni ad gir (ör. LCSC, Direnç.net).</li>
+            <li>İstersen tedarikçinin <b>ürün kodu</b>, <b>bağlantısı</b> ve <b>birim fiyatı</b>nı gir.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Ne işe yarar</h3>
+          <ul class="ticks">
+            <li>Birden çok tedarikçi eklenince <b>en ucuzu</b> “en ucuz” etiketiyle üstte listelenir.</li>
+            <li>Ürün bağlantısına tek dokunuşla gidersin — sipariş verirken kolaylık.</li>
+            <li>Fiyatı güncelleyince tarih otomatik damgalanır; eski fiyat üzerine yazılır.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- ============ SİPARİŞLER ============ -->
+    <section id="siparis">
+      <div class="sec-head">
+        <span class="sec-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-list"/></svg></span>
+        <div><div class="kicker">Yeni · FAZ 3b <span class="phase done">Eklendi</span></div><h2 class="sec-title">Siparişler — sipariş ver, teslim al, stoğa geç</h2></div>
+      </div>
+      <p class="lead">Ne sipariş ettiğini takip et; kutu gelince tek dokunuşla stoğa işle. Teslim alınan parça doğru göze girer, geçmişte “satın alma” olarak görünür.</p>
+      <div class="grid2">
+        <div class="card">
+          <h3>Sipariş oluşturma</h3>
+          <ol class="steps">
+            <li><b>Alışveriş</b> ekranındaki <b>Siparişler</b> bağlantısından yeni sipariş aç (istersen tedarikçi seç).</li>
+            <li><b>Satır ekle</b>: parçayı ad/SKU ile ara-seç ya da katalogda yoksa ham ad yaz; adet + birim fiyat gir.</li>
+            <li>Hazırsa <b>Sipariş verildi</b> olarak işaretle. Kısayol: Eksikler ekranındaki <b>Siparişe ekle</b> tüm eksikleri tek seferde taslak siparişe döker.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Teslim alma</h3>
+          <ul class="ticks">
+            <li>Kutu gelince her satırda <b>Teslim al</b> → hangi göze girdiğini ve <b>kaç adet</b> geldiğini seç (kısmi teslim olur).</li>
+            <li>Stok o göze eklenir; parça geçmişinde <b>Satın alma</b> olarak görünür.</li>
+            <li>Tümü gelince satır <b>“Tamam”</b> rozetini alır; siparişi <b>Teslim alındı</b> yaparsın.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout tip"><span class="ci"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-bulb"/></svg></span>
+        <div>Katalogda olmayan “ham” satırlar bilgi amaçlıdır — teslim alıp stoğa işlemek için önce o satırı bir parçayla eşleştirmen gerekir.</div>
       </div>
     </section>
 

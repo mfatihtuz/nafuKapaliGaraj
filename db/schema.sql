@@ -207,6 +207,7 @@ CREATE TABLE stock_transactions (
   KEY idx_tx_part (tenant_id, part_id, created_at),
   KEY idx_tx_loc  (tenant_id, location_id, created_at),
   KEY idx_tx_proj (tenant_id, project_id),
+  KEY idx_tx_ref  (tenant_id, ref_id),          -- FAZ 3b: ödünç/sipariş/transfer bağı (migration 009)
   CONSTRAINT fk_tx_part FOREIGN KEY (part_id)     REFERENCES parts(id),
   CONSTRAINT fk_tx_loc  FOREIGN KEY (location_id) REFERENCES locations(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
