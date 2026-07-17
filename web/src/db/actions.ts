@@ -4,10 +4,11 @@
 import { db } from './dexie'
 import type {
   Part, Location, Category, Stock, StockLevel, TxReason, Transaction, OutboxOp,
-  AttachmentOwnerType, AttachmentKind, PendingUpload,
+  AttachmentOwnerType, AttachmentKind, PendingUpload, Project, ProjectStatus, BomItem,
 } from './types'
 import { uuidv7, deterministicUuid } from '../lib/uuid'
 import { nowIso } from '../lib/format'
+import { foldToAscii } from '../lib/normalize'
 import { enqueue } from '../sync/outbox'
 import { applyTx } from '../sync/derive'
 import { engine } from '../sync/engine'
@@ -355,4 +356,175 @@ export async function deleteAttachment(id: string): Promise<void> {
   if (local) await db.attachments.put({ ...local, deleted_at: ts, updated_at: ts })
   await enqueue({ type: 'delete', entity: 'attachment', data: { id, updated_at: ts } })
   engine.schedule()
+}
+
+// --- Projeler + BOM (FAZ 3a) ------------------------------------------------
+
+/** 'PRJ-<slug>' benzersiz sanal konum kodu üret (mevcut konum kodlarıyla çakışmaz). */
+async function uniqueProjectCode(name: string): Promise<string> {
+  const slug = foldToAscii(name).toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 16) || 'PRJ'
+  const base = `PRJ-${slug}`
+  const codes = new Set((await db.locations.toArray()).map((l) => l.code))
+  if (!codes.has(base)) return base
+  let i = 2
+  while (codes.has(`${base}-${i}`)) i++
+  return `${base}-${i}`
+}
+
+/**
+ * Proje kaydet/güncelle. Yeni projede sanal konum (type='project', PRJ-*) otomatik kurulur.
+ * Konum op'u proje op'undan ÖNCE enqueue edilir (parçalar buraya çekilecek).
+ */
+export async function saveProject(input: { id?: string; name: string; status?: ProjectStatus; notes?: string | null }): Promise<string> {
+  const ts = nowIso()
+  const projId = input.id ?? uuidv7()
+  const existing = input.id ? await db.projects.get(input.id) : undefined
+  let locationId = existing?.location_id ?? null
+
+  if (!locationId) {
+    const locId = uuidv7()
+    const code = await uniqueProjectCode(input.name)
+    const loc: Location = {
+      id: locId, parent_id: null, code, name: input.name, type: 'project', path: code,
+      photo_id: null, capacity_note: null, sort_order: 0, updated_at: ts, deleted_at: null,
+    }
+    await db.locations.put(loc)
+    await enqueue({ type: 'upsert', entity: 'location', data: loc }) // ÖNCE (++seq)
+    locationId = locId
+  }
+
+  const proj: Project = {
+    id: projId, name: input.name,
+    status: input.status ?? existing?.status ?? 'planned',
+    location_id: locationId,
+    notes: input.notes ?? existing?.notes ?? null,
+    updated_at: ts, deleted_at: null,
+  }
+  await db.projects.put(proj)
+  await enqueue({ type: 'upsert', entity: 'project', data: proj })
+  engine.schedule()
+  return projId
+}
+
+/**
+ * Projeyi kaldır (arşivle). Proje gözünde stok varsa ENGELLE (elle iade uyarısı — bitiş
+ * politikası). BOM satırları + boş sanal konum da soft-delete edilir.
+ * @throws Error('PROJECT_HAS_STOCK') proje gözünde stok kaldıysa
+ */
+export async function softDeleteProject(id: string): Promise<void> {
+  const proj = await db.projects.get(id)
+  if (!proj) return
+  if (proj.location_id) {
+    const rows = await db.stock.where('location_id').equals(proj.location_id).toArray()
+    if (rows.some((s) => Number(s.qty) > 0 || (s.level != null && s.level !== 'empty'))) {
+      throw new Error('PROJECT_HAS_STOCK')
+    }
+  }
+  const ts = nowIso()
+  const boms = (await db.bomItems.where('project_id').equals(id).toArray()).filter((b) => !b.deleted_at)
+  for (const b of boms) {
+    await db.bomItems.put({ ...b, deleted_at: ts, updated_at: ts })
+    await enqueue({ type: 'delete', entity: 'bom_item', data: { id: b.id, updated_at: ts } })
+  }
+  await db.projects.put({ ...proj, deleted_at: ts, updated_at: ts })
+  await enqueue({ type: 'delete', entity: 'project', data: { id, updated_at: ts } })
+  if (proj.location_id) {
+    const loc = await db.locations.get(proj.location_id)
+    if (loc && !loc.deleted_at) {
+      await db.locations.put({ ...loc, deleted_at: ts, updated_at: ts })
+      await enqueue({ type: 'delete', entity: 'location', data: { id: loc.id, updated_at: ts } })
+    }
+  }
+  engine.schedule()
+}
+
+export type BomDraft = Omit<BomItem, 'id' | 'project_id' | 'updated_at' | 'deleted_at'>
+
+/**
+ * Bir projenin BOM satırlarını toplu yaz. replace=true (varsayılan): mevcut satırları
+ * soft-delete edip yenisini kurar (yeniden içe aktarma = değiştir). Tek transaction.
+ */
+export async function saveBomItemsBulk(projectId: string, drafts: BomDraft[], replace = true): Promise<number> {
+  const ts = nowIso()
+  const existing = replace
+    ? (await db.bomItems.where('project_id').equals(projectId).toArray()).filter((b) => !b.deleted_at)
+    : []
+  const rows: BomItem[] = drafts.map((d, i) => ({
+    id: uuidv7(), project_id: projectId, ...d, sort_order: d.sort_order ?? i, updated_at: ts, deleted_at: null,
+  }))
+  const ops: OutboxOp[] = []
+  for (const b of existing) ops.push({ op_id: uuidv7(), type: 'delete', entity: 'bom_item', data: { id: b.id, updated_at: ts }, created_at: Date.now(), attempts: 0 })
+  for (const r of rows) ops.push({ op_id: uuidv7(), type: 'upsert', entity: 'bom_item', data: r, created_at: Date.now(), attempts: 0 })
+  await db.transaction('rw', db.bomItems, db.outbox, async () => {
+    for (const b of existing) await db.bomItems.put({ ...b, deleted_at: ts, updated_at: ts })
+    await db.bomItems.bulkPut(rows)
+    await db.outbox.bulkAdd(ops)
+  })
+  engine.schedule()
+  return rows.length
+}
+
+/** Tek BOM satırını güncelle (ör. eşleştirme: part_id ata, not değiştir). */
+export async function saveBomItem(item: BomItem): Promise<void> {
+  const row: BomItem = { ...item, updated_at: nowIso() }
+  await db.bomItems.put(row)
+  await enqueue({ type: 'upsert', entity: 'bom_item', data: row })
+  engine.schedule()
+}
+
+export async function deleteBomItem(id: string): Promise<void> {
+  const ts = nowIso()
+  const local = await db.bomItems.get(id)
+  if (local) await db.bomItems.put({ ...local, deleted_at: ts, updated_at: ts })
+  await enqueue({ type: 'delete', entity: 'bom_item', data: { id, updated_at: ts } })
+  engine.schedule()
+}
+
+/**
+ * Projeye parça çek: kaynak gözden proje sanal gözüne transfer (iki bacak, ortak refId,
+ * project_id defterde). qty çağıran tarafça mevcut stokla SINIRLANIR (negatif önleme).
+ * Miktarlı/takipsiz: qty adet. Doluluk: hedef=kaynağın doluluğu, kaynak=BİTTİ.
+ */
+export async function pullToProject(
+  part: Part, fromLocationId: string, projectLocationId: string, qty: number, projectId: string, fromLevel?: StockLevel | null,
+): Promise<void> {
+  if (fromLocationId === projectLocationId) return
+  const refId = uuidv7()
+  if (part.count_mode === 'level') {
+    await setLevel(part.id, projectLocationId, fromLevel ?? 'full', null, { reason: 'transfer', refId })
+    await setLevel(part.id, fromLocationId, 'empty', null, { reason: 'transfer', refId })
+  } else {
+    const n = Math.max(0, qty)
+    if (n === 0) return
+    await moveStock({ partId: part.id, locationId: fromLocationId, delta: -n, reason: 'transfer', refId, projectId })
+    await moveStock({ partId: part.id, locationId: projectLocationId, delta: n, reason: 'transfer', refId, projectId })
+  }
+}
+
+/** Projeden çekmeceye iade (pullToProject tersi). */
+export async function returnFromProject(
+  part: Part, projectLocationId: string, toLocationId: string, qty: number, projectId: string, projectLevel?: StockLevel | null,
+): Promise<void> {
+  if (projectLocationId === toLocationId) return
+  const refId = uuidv7()
+  if (part.count_mode === 'level') {
+    await setLevel(part.id, toLocationId, projectLevel ?? 'full', null, { reason: 'transfer', refId })
+    await setLevel(part.id, projectLocationId, 'empty', null, { reason: 'transfer', refId })
+  } else {
+    const n = Math.max(0, qty)
+    if (n === 0) return
+    await moveStock({ partId: part.id, locationId: projectLocationId, delta: -n, reason: 'transfer', refId, projectId })
+    await moveStock({ partId: part.id, locationId: toLocationId, delta: n, reason: 'transfer', refId, projectId })
+  }
+}
+
+/** Proje gözünden tüket (harcandı — tek bacak consume, project_id defterde). */
+export async function consumeInProject(part: Part, projectLocationId: string, qty: number, projectId: string): Promise<void> {
+  if (part.count_mode === 'level') {
+    await setLevel(part.id, projectLocationId, 'empty', null, { reason: 'consume' })
+  } else {
+    const n = Math.max(0, qty)
+    if (n === 0) return
+    await moveStock({ partId: part.id, locationId: projectLocationId, delta: -n, reason: 'consume', projectId })
+  }
 }

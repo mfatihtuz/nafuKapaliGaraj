@@ -106,7 +106,7 @@ export interface OutboxOp {
   seq?: number // ++auto-increment — kuyruk sırasını KARARLI tutar (Date.now() eşitliklerine karşı)
   op_id: string
   type: OutboxType
-  entity?: 'part' | 'location' | 'category' | 'attachment'
+  entity?: 'part' | 'location' | 'category' | 'attachment' | 'project' | 'bom_item'
   data: unknown
   created_at: number
   attempts: number
@@ -157,6 +157,37 @@ export interface PendingUpload {
   attempts: number
   last_error?: string
   last_attempt_at?: number
+}
+
+// --- Projeler + BOM (FAZ 3a) -----------------------------------------------
+
+export type ProjectStatus = 'planned' | 'active' | 'done' | 'archived'
+
+/** Proje — plan verisi (LWW katalog). location_id: projenin sanal konumu (çekilen parçalar orada). */
+export interface Project {
+  id: string
+  name: string
+  status: ProjectStatus
+  location_id: string | null
+  notes: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+/** BOM satırı (LWW katalog). part_id NULL = henüz eşleşmemiş ham satır (raw_* dolu). */
+export interface BomItem {
+  id: string
+  project_id: string
+  part_id: string | null
+  raw_ref: string | null
+  raw_value: string | null
+  raw_footprint: string | null
+  raw_mpn: string | null
+  note: string | null
+  sort_order: number
+  qty_needed: number
+  updated_at: string
+  deleted_at: string | null
 }
 
 export interface MetaRow {

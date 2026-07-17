@@ -2,8 +2,9 @@
 
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from './dexie'
-import type { Part, Location, Category, Stock, Attachment, PendingUpload, AttachmentOwnerType } from './types'
+import type { Part, Location, Category, Stock, Attachment, PendingUpload, AttachmentOwnerType, Project, BomItem } from './types'
 import { searchMatch } from '../lib/normalize'
+import { isFreeStock } from '../lib/freeStock'
 
 export interface StockWithPart { stock: Stock; part: Part }
 export interface StockWithLocation { stock: Stock; location: Location }
@@ -306,5 +307,102 @@ export function useShoppingList(): ShoppingItem[] {
     },
     [],
     [],
+  )
+}
+
+// --- Projeler + BOM (FAZ 3a) ------------------------------------------------
+
+/** Tüm aktif projeler (status'a göre UI grupluyor). */
+export function useProjects(): Project[] {
+  return useLiveQuery(
+    async () => (await db.projects.filter((p) => !p.deleted_at).toArray())
+      .sort((a, b) => a.name.localeCompare(b.name, 'tr')),
+    [], [],
+  )
+}
+
+export function useProject(id: string | undefined): Project | undefined {
+  return useLiveQuery(() => (id ? db.projects.get(id) : undefined), [id])
+}
+
+/** Bir projenin aktif BOM satırları (sıra). */
+export function useBomItems(projectId: string | undefined): BomItem[] {
+  return useLiveQuery(
+    async () => {
+      if (!projectId) return []
+      return (await db.bomItems.where('project_id').equals(projectId).toArray())
+        .filter((b) => !b.deleted_at)
+        .sort((a, b) => a.sort_order - b.sort_order)
+    },
+    [projectId], [],
+  )
+}
+
+export interface FeasibilityLine {
+  bom: BomItem
+  part: Part | null
+  need: number
+  have: number
+  short: number         // exact: eksik adet; level: 0/1
+  ok: boolean
+  unmatched: boolean    // part_id yok → belirsiz
+}
+export interface Feasibility {
+  lines: FeasibilityLine[]
+  shortages: FeasibilityLine[]
+  unmatched: FeasibilityLine[]
+  canBuild: boolean
+}
+
+/**
+ * "Bu projeyi yapabilir miyim?" — SAF Dexie türetmesi (sunucu ucu YOK, uçak modunda çalışır).
+ * 'Elde' = yalnız SERBEST konumlardaki stok (isFreeStock: proje/ödünç/karantina hariç) →
+ * projeye zaten çekilmiş parça ikinci kez "elde" sayılmaz. Eşleşmemiş (part_id yok) satırlar
+ * belirsiz sayılır ve yeşil "yapılabilir"i engeller (dürüst).
+ */
+export function useProjectFeasibility(projectId: string | undefined): Feasibility {
+  const empty: Feasibility = { lines: [], shortages: [], unmatched: [], canBuild: false }
+  return useLiveQuery(
+    async () => {
+      if (!projectId) return empty
+      const boms = (await db.bomItems.where('project_id').equals(projectId).toArray())
+        .filter((b) => !b.deleted_at)
+        .sort((a, b) => a.sort_order - b.sort_order)
+      if (boms.length === 0) return empty
+
+      const locs = await db.locations.toArray()
+      const locById = new Map(locs.map((l) => [l.id, l]))
+
+      const lines: FeasibilityLine[] = []
+      for (const bom of boms) {
+        if (!bom.part_id) {
+          lines.push({ bom, part: null, need: bom.qty_needed, have: 0, short: bom.qty_needed, ok: false, unmatched: true })
+          continue
+        }
+        const part = await db.parts.get(bom.part_id)
+        if (!part || part.deleted_at) {
+          lines.push({ bom, part: null, need: bom.qty_needed, have: 0, short: bom.qty_needed, ok: false, unmatched: true })
+          continue
+        }
+        const rows = (await db.stock.where('part_id').equals(part.id).toArray())
+          .filter((s) => isFreeStock(locById.get(s.location_id)))
+        const need = Number(bom.qty_needed)
+        if (part.count_mode === 'level') {
+          // Doluluk: serbest bir konumda DOLU/AZ varsa "var" say.
+          const have = rows.some((s) => s.level === 'full' || s.level === 'low') ? 1 : 0
+          const ok = have >= 1
+          lines.push({ bom, part, need, have, short: ok ? 0 : 1, ok, unmatched: false })
+        } else {
+          // Miktarlı / takipsiz: serbest konumlardaki toplam.
+          const have = rows.reduce((s, r) => s + Math.max(0, Number(r.qty)), 0)
+          const short = Math.max(0, need - have)
+          lines.push({ bom, part, need, have, short, ok: short <= 0, unmatched: false })
+        }
+      }
+      const shortages = lines.filter((l) => !l.unmatched && !l.ok)
+      const unmatched = lines.filter((l) => l.unmatched)
+      return { lines, shortages, unmatched, canBuild: shortages.length === 0 && unmatched.length === 0 }
+    },
+    [projectId], empty,
   )
 }

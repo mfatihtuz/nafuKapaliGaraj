@@ -3,7 +3,7 @@
 import Dexie, { type Table } from 'dexie'
 import type {
   Part, Location, Category, Stock, Transaction, OutboxOp, MetaRow, AuthState, TenantInfo,
-  Attachment, PendingUpload,
+  Attachment, PendingUpload, Project, BomItem,
 } from './types'
 
 export class DepoDB extends Dexie {
@@ -16,6 +16,8 @@ export class DepoDB extends Dexie {
   meta!: Table<MetaRow, string>
   attachments!: Table<Attachment, string> // senkronlanan ek METADATA (blob yok)
   uploads!: Table<PendingUpload, string>   // giden yükleme kuyruğu (blob YEREL)
+  projects!: Table<Project, string>        // FAZ 3a — proje (LWW katalog)
+  bomItems!: Table<BomItem, string>        // FAZ 3a — BOM satırı (LWW katalog)
 
   constructor() {
     super('depo')
@@ -41,6 +43,21 @@ export class DepoDB extends Dexie {
       meta: 'key',
       attachments: 'id, [owner_type+owner_id], owner_id, sha256, updated_at, deleted_at',
       uploads: 'id, [owner_type+owner_id], owner_id, created_at',
+    })
+    // v3 (FAZ 3a): projeler + BOM. Yeni tablolar boş başlar, ilk sync'te dolar (v2→v3
+    // yükseltme mevcut veriye dokunmaz).
+    this.version(3).stores({
+      parts: 'id, sku, category_id, count_mode, updated_at, deleted_at',
+      locations: 'id, code, parent_id, type, sort_order, updated_at',
+      categories: 'id, code, parent_id, sort_order, updated_at',
+      stock: 'key, part_id, location_id',
+      transactions: 'id, part_id, location_id, created_at',
+      outbox: '++seq, &op_id, created_at',
+      meta: 'key',
+      attachments: 'id, [owner_type+owner_id], owner_id, sha256, updated_at, deleted_at',
+      uploads: 'id, [owner_type+owner_id], owner_id, created_at',
+      projects: 'id, status, location_id, updated_at, deleted_at',
+      bomItems: 'id, project_id, part_id, updated_at, deleted_at',
     })
   }
 }
@@ -86,6 +103,6 @@ export async function wipeLocalData(): Promise<void> {
   await Promise.all([
     db.parts.clear(), db.locations.clear(), db.categories.clear(),
     db.stock.clear(), db.transactions.clear(), db.outbox.clear(), db.meta.clear(),
-    db.attachments.clear(), db.uploads.clear(),
+    db.attachments.clear(), db.uploads.clear(), db.projects.clear(), db.bomItems.clear(),
   ])
 }
