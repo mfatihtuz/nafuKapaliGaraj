@@ -2,7 +2,7 @@
 
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from './dexie'
-import type { Part, Location, Category, Stock, Attachment, PendingUpload, AttachmentOwnerType, Project, BomItem } from './types'
+import type { Part, Location, Category, Stock, Attachment, PendingUpload, AttachmentOwnerType, Project, BomItem, Supplier, PartSupplier } from './types'
 import { searchMatch } from '../lib/normalize'
 import { isFreeStock } from '../lib/freeStock'
 
@@ -415,4 +415,37 @@ export function useProjectFeasibility(projectId: string | undefined): Feasibilit
     },
     [projectId], empty,
   )
+}
+
+// --- Tedarikçiler + fiyat (FAZ 3b — 3.5) ------------------------------------
+
+export function useSuppliers(): Supplier[] {
+  return useLiveQuery(
+    async () => (await db.suppliers.filter((s) => !s.deleted_at).toArray()).sort((a, b) => a.name.localeCompare(b.name, 'tr')),
+    [], [],
+  )
+}
+
+/** Bir parçanın tedarikçi bağları (fiyatlı), en ucuz önce. */
+export function usePartSuppliers(partId: string | undefined): PartSupplier[] {
+  return useLiveQuery(
+    async () => {
+      if (!partId) return []
+      return (await db.partSuppliers.where('part_id').equals(partId).toArray())
+        .filter((ps) => !ps.deleted_at)
+        .sort((a, b) => (a.last_price ?? Infinity) - (b.last_price ?? Infinity))
+    },
+    [partId], [],
+  )
+}
+
+/** Bir parçanın en düşük fiyatlı tedarikçisi (kart/özet için). */
+export function usePartBestPrice(partId: string | undefined): PartSupplier | undefined {
+  return useLiveQuery(async () => {
+    if (!partId) return undefined
+    const rows = (await db.partSuppliers.where('part_id').equals(partId).toArray())
+      .filter((ps) => !ps.deleted_at && ps.last_price != null)
+      .sort((a, b) => (a.last_price ?? Infinity) - (b.last_price ?? Infinity))
+    return rows[0]
+  }, [partId])
 }

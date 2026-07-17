@@ -107,6 +107,7 @@ export interface OutboxOp {
   op_id: string
   type: OutboxType
   entity?: 'part' | 'location' | 'category' | 'attachment' | 'project' | 'bom_item'
+    | 'supplier' | 'part_supplier' | 'loan' | 'purchase_order' | 'po_item'
   data: unknown
   created_at: number
   attempts: number
@@ -186,6 +187,77 @@ export interface BomItem {
   note: string | null
   sort_order: number
   qty_needed: number
+  updated_at: string
+  deleted_at: string | null
+}
+
+// --- Tedarikçi / Ödünç / Sipariş (FAZ 3b) -----------------------------------
+
+/** Tedarikçi (LWW katalog). */
+export interface Supplier {
+  id: string
+  name: string
+  website: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+/** Parça↔tedarikçi bağı + son fiyat (LWW katalog). id = deterministik(part|supplier). */
+export interface PartSupplier {
+  id: string
+  part_id: string
+  supplier_id: string
+  supplier_sku: string | null
+  product_url: string | null
+  last_price: number | null
+  currency: string
+  last_price_at: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+/** Ödünç kaydı (LWW katalog). location_id: borçlu-başına LOAN-* sanal konum. */
+export interface Loan {
+  id: string
+  part_id: string
+  qty: number
+  borrower: string
+  borrower_contact: string | null
+  location_id: string
+  out_at: string
+  due_at: string | null
+  returned_at: string | null
+  note: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type PoStatus = 'draft' | 'ordered' | 'received' | 'cancelled'
+
+/** Satın alma siparişi (LWW katalog). */
+export interface PurchaseOrder {
+  id: string
+  supplier_id: string | null
+  status: PoStatus
+  ordered_at: string | null
+  received_at: string | null
+  total: number | null
+  currency: string
+  note: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+/** Sipariş satırı (LWW katalog). part_id NULL = katalogda olmayan yeni parça (raw_name). */
+export interface PoItem {
+  id: string
+  po_id: string
+  part_id: string | null
+  raw_name: string | null
+  qty: number
+  unit_price: number | null
+  received_qty: number
+  target_location_id: string | null
   updated_at: string
   deleted_at: string | null
 }

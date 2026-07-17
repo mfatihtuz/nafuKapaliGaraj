@@ -588,4 +588,50 @@ fwrite(STDOUT, "\nTEST 21 — Projeler + BOM (FAZ 3a): LWW katalog sync, bootstr
     check(count($delEnts) >= 1, 'BOM cascade-delete pull change-feed\'e düştü (diğer cihaza yayılır)');
 }
 
+fwrite(STDOUT, "\nTEST 22 — Tedarikçiler + part_suppliers (FAZ 3b 3.5): LWW, bootstrap, uq_ps determinizmi, tenant izolasyonu\n");
+{
+    [$db] = make_test_db();
+    $t = seed_tenant($db);
+    $svc = new SyncService($db, $t['tenant_id'], $t['user_id']);
+    $ids = scaffold($svc);
+
+    $supId = Uuid::v7();
+    $opSup = ['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'supplier',
+        'data' => ['id' => $supId, 'name' => 'LCSC', 'website' => 'lcsc.com', 'updated_at' => iso(1)]];
+    // part_supplier id istemcide (part|supplier)'dan deterministik türetilir — burada sabit bir değer taklit
+    $psId = Uuid::v7();
+    $opPs = ['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'part_supplier',
+        'data' => ['id' => $psId, 'part_id' => $ids['part_id'], 'supplier_id' => $supId,
+                   'supplier_sku' => 'C25804', 'last_price' => 0.012, 'currency' => 'USD', 'updated_at' => iso(1)]];
+    $r = $svc->push([$opSup, $opPs]);
+    eq(count($r['applied']), 2, 'supplier + part_supplier uygulandı');
+    $boot = $svc->bootstrap();
+    eq(count($boot['suppliers']), 1, 'bootstrap 1 tedarikçi');
+    eq(count($boot['part_suppliers']), 1, 'bootstrap 1 part_supplier');
+
+    // Idempotentlik: AYNI deterministik id ile tekrar → tek satır (fiyat güncellenebilir, LWW)
+    $opPs2 = $opPs; $opPs2['op_id'] = Uuid::v7();
+    $opPs2['data']['last_price'] = 0.010; $opPs2['data']['updated_at'] = iso(5);
+    $r2 = $svc->push([$opPs2]);
+    eq(count($r2['rejected']), 0, 'aynı id ikinci upsert reddedilmedi (LWW)');
+    $psRows = $db->all('SELECT last_price FROM part_suppliers WHERE part_id = :p', ['p' => $ids['part_id']]);
+    eq(count($psRows), 1, 'aynı (parça,tedarikçi) TEK satır (deterministik id çift üretmez)');
+    check(abs((float) $psRows[0]['last_price'] - 0.010) < 1e-9, 'fiyat LWW ile güncellendi (0.012→0.010)');
+
+    // uq_ps: FARKLI id ile aynı (parça,tedarikçi) → UNIQUE ihlali (deterministik id'nin ÖNLEDİĞİ durum)
+    $opPsDup = ['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'part_supplier',
+        'data' => ['id' => Uuid::v7(), 'part_id' => $ids['part_id'], 'supplier_id' => $supId, 'last_price' => 1, 'updated_at' => iso(6)]];
+    $rDup = $svc->push([$opPsDup]);
+    eq(count($rDup['rejected']), 1, 'farklı id + aynı çift → uq_ps reddi (bu yüzden istemci deterministik id üretir)');
+
+    // Tenant izolasyonu
+    $tb = seed_tenant($db, 'B');
+    $svcB = new SyncService($db, $tb['tenant_id'], $tb['user_id']);
+    eq(count($svcB->bootstrap()['suppliers']), 0, 'B tenant A tedarikçisini görmez');
+    // B, A'nın parçasını part_supplier'a bağlayamaz
+    $rCross = $svcB->push([['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'part_supplier',
+        'data' => ['id' => Uuid::v7(), 'part_id' => $ids['part_id'], 'supplier_id' => $supId, 'updated_at' => iso(7)]]]);
+    eq(count($rCross['rejected']), 1, 'B, A parçası+tedarikçisini bağlayamaz (çapraz-tenant reddi)');
+}
+
 exit(test_summary());

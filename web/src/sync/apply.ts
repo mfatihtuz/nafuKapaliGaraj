@@ -5,6 +5,7 @@ import { db, setCursor, metaSet, TENANT_KEY, BOOTSTRAPPED } from '../db/dexie'
 import type {
   Part, Location, Category, AbcClass, CountMode, LocationType, AttributeDef,
   Attachment, AttachmentKind, AttachmentOwnerType, Project, ProjectStatus, BomItem,
+  Supplier, PartSupplier, Loan, PurchaseOrder, PoStatus, PoItem,
 } from '../db/types'
 import { tsToMs } from '../lib/format'
 import type { BootstrapResult, PullResult } from './api'
@@ -121,6 +122,49 @@ export function mapBomItem(p: Record<string, unknown>): BomItem {
   }
 }
 
+/** Tedarikçi (LWW katalog, FAZ 3b). */
+export function mapSupplier(p: Record<string, unknown>): Supplier {
+  return {
+    id: String(p.id), name: String(p.name ?? ''), website: (p.website as string | null) ?? null,
+    updated_at: String(p.updated_at ?? ''), deleted_at: (p.deleted_at as string | null) ?? null,
+  }
+}
+export function mapPartSupplier(p: Record<string, unknown>): PartSupplier {
+  return {
+    id: String(p.id), part_id: String(p.part_id ?? ''), supplier_id: String(p.supplier_id ?? ''),
+    supplier_sku: (p.supplier_sku as string | null) ?? null, product_url: (p.product_url as string | null) ?? null,
+    last_price: n(p.last_price), currency: String(p.currency ?? 'TRY'), last_price_at: (p.last_price_at as string | null) ?? null,
+    updated_at: String(p.updated_at ?? ''), deleted_at: (p.deleted_at as string | null) ?? null,
+  }
+}
+export function mapLoan(p: Record<string, unknown>): Loan {
+  return {
+    id: String(p.id), part_id: String(p.part_id ?? ''), qty: n(p.qty) ?? 0,
+    borrower: String(p.borrower ?? ''), borrower_contact: (p.borrower_contact as string | null) ?? null,
+    location_id: String(p.location_id ?? ''), out_at: String(p.out_at ?? ''),
+    due_at: (p.due_at as string | null) ?? null, returned_at: (p.returned_at as string | null) ?? null,
+    note: (p.note as string | null) ?? null,
+    updated_at: String(p.updated_at ?? ''), deleted_at: (p.deleted_at as string | null) ?? null,
+  }
+}
+export function mapPurchaseOrder(p: Record<string, unknown>): PurchaseOrder {
+  return {
+    id: String(p.id), supplier_id: (p.supplier_id as string | null) ?? null,
+    status: (p.status as PoStatus) ?? 'draft', ordered_at: (p.ordered_at as string | null) ?? null,
+    received_at: (p.received_at as string | null) ?? null, total: n(p.total), currency: String(p.currency ?? 'TRY'),
+    note: (p.note as string | null) ?? null,
+    updated_at: String(p.updated_at ?? ''), deleted_at: (p.deleted_at as string | null) ?? null,
+  }
+}
+export function mapPoItem(p: Record<string, unknown>): PoItem {
+  return {
+    id: String(p.id), po_id: String(p.po_id ?? ''), part_id: (p.part_id as string | null) ?? null,
+    raw_name: (p.raw_name as string | null) ?? null, qty: n(p.qty) ?? 0, unit_price: n(p.unit_price),
+    received_qty: n(p.received_qty) ?? 0, target_location_id: (p.target_location_id as string | null) ?? null,
+    updated_at: String(p.updated_at ?? ''), deleted_at: (p.deleted_at as string | null) ?? null,
+  }
+}
+
 // --- LWW upsert (yerel) -----------------------------------------------------
 
 async function lwwPut<T extends { id: string; updated_at: string }>(
@@ -156,6 +200,21 @@ export async function applyChanges(result: PullResult): Promise<void> {
       case 'bom_item':
         await lwwPut(db.bomItems, mapBomItem(ch.payload))
         break
+      case 'supplier':
+        await lwwPut(db.suppliers, mapSupplier(ch.payload))
+        break
+      case 'part_supplier':
+        await lwwPut(db.partSuppliers, mapPartSupplier(ch.payload))
+        break
+      case 'loan':
+        await lwwPut(db.loans, mapLoan(ch.payload))
+        break
+      case 'purchase_order':
+        await lwwPut(db.purchaseOrders, mapPurchaseOrder(ch.payload))
+        break
+      case 'po_item':
+        await lwwPut(db.poItems, mapPoItem(ch.payload))
+        break
       case 'stock_transaction':
         await applyTx(mapTx(ch.payload))
         break
@@ -170,18 +229,23 @@ export async function applyChanges(result: PullResult): Promise<void> {
 // --- bootstrap (ilk kurulum) ------------------------------------------------
 
 export async function applyBootstrap(result: BootstrapResult): Promise<void> {
-  await db.transaction('rw', [db.parts, db.locations, db.categories, db.stock, db.transactions, db.attachments, db.projects, db.bomItems], async () => {
+  await db.transaction('rw', [db.parts, db.locations, db.categories, db.stock, db.transactions, db.attachments, db.projects, db.bomItems, db.suppliers, db.partSuppliers, db.loans, db.purchaseOrders, db.poItems], async () => {
     // Önce temizle: bootstrap sunucunun TAM görüntüsüdür. bulkPut ile birleştirmek,
     // sunucuda artık olmayan/eski kayıtları (ör. yeniden yapılandırılmış kategori ağacı
     // sonrası hayalet alt-gruplar) yerelde bırakır → "2 Diğer" gibi bozuk ağaç. Temizle+yaz.
     // NOT: uploads (giden yükleme kuyruğu) TEMİZLENMEZ — outbox gibi yerel bekleyen iştir.
-    await Promise.all([db.parts.clear(), db.locations.clear(), db.categories.clear(), db.stock.clear(), db.transactions.clear(), db.attachments.clear(), db.projects.clear(), db.bomItems.clear()])
+    await Promise.all([db.parts.clear(), db.locations.clear(), db.categories.clear(), db.stock.clear(), db.transactions.clear(), db.attachments.clear(), db.projects.clear(), db.bomItems.clear(), db.suppliers.clear(), db.partSuppliers.clear(), db.loans.clear(), db.purchaseOrders.clear(), db.poItems.clear()])
     await db.categories.bulkPut(result.categories.map(mapCategory))
     await db.locations.bulkPut(result.locations.map(mapLocation))
     await db.parts.bulkPut(result.parts.map(mapPart))
     await db.attachments.bulkPut((result.attachments ?? []).map(mapAttachment))
     await db.projects.bulkPut((result.projects ?? []).map(mapProject))
     await db.bomItems.bulkPut((result.bom_items ?? []).map(mapBomItem))
+    await db.suppliers.bulkPut((result.suppliers ?? []).map(mapSupplier))
+    await db.partSuppliers.bulkPut((result.part_suppliers ?? []).map(mapPartSupplier))
+    await db.loans.bulkPut((result.loans ?? []).map(mapLoan))
+    await db.purchaseOrders.bulkPut((result.purchase_orders ?? []).map(mapPurchaseOrder))
+    await db.poItems.bulkPut((result.po_items ?? []).map(mapPoItem))
 
     // Snapshot yetkilidir → stok buradan; geçmiş tx yalnızca kayıt olarak saklanır.
     for (const s of result.stock_snapshot) {
@@ -204,11 +268,12 @@ export async function applyBootstrap(result: BootstrapResult): Promise<void> {
  * bulkPut yerine önce clear: sunucuda artık olmayan (hayalet) satırlar da silinir.
  */
 export async function resyncFromServer(): Promise<void> {
-  await db.transaction('rw', [db.parts, db.locations, db.categories, db.stock, db.transactions, db.attachments, db.projects, db.bomItems], async () => {
+  await db.transaction('rw', [db.parts, db.locations, db.categories, db.stock, db.transactions, db.attachments, db.projects, db.bomItems, db.suppliers, db.partSuppliers, db.loans, db.purchaseOrders, db.poItems], async () => {
     await Promise.all([
       db.parts.clear(), db.locations.clear(), db.categories.clear(),
       db.stock.clear(), db.transactions.clear(), db.attachments.clear(),
       db.projects.clear(), db.bomItems.clear(),
+      db.suppliers.clear(), db.partSuppliers.clear(), db.loans.clear(), db.purchaseOrders.clear(), db.poItems.clear(),
     ])
   })
   await metaSet(BOOTSTRAPPED, false)

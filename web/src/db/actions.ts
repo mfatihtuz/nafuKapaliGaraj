@@ -5,6 +5,7 @@ import { db } from './dexie'
 import type {
   Part, Location, Category, Stock, StockLevel, TxReason, Transaction, OutboxOp,
   AttachmentOwnerType, AttachmentKind, PendingUpload, Project, ProjectStatus, BomItem,
+  Supplier, PartSupplier,
 } from './types'
 import { uuidv7, deterministicUuid } from '../lib/uuid'
 import { nowIso } from '../lib/format'
@@ -535,4 +536,64 @@ export async function consumeInProject(part: Part, projectLocationId: string, qt
     if (n === 0) return
     await moveStock({ partId: part.id, locationId: projectLocationId, delta: -n, reason: 'consume', projectId })
   }
+}
+
+// --- Tedarikçiler + fiyat (FAZ 3b — 3.5) ------------------------------------
+
+export async function saveSupplier(input: { id?: string; name: string; website?: string | null }): Promise<string> {
+  const ts = nowIso()
+  const existing = input.id ? await db.suppliers.get(input.id) : undefined
+  const row: Supplier = {
+    id: input.id ?? uuidv7(), name: input.name.trim(),
+    website: (input.website ?? existing?.website ?? null) || null,
+    updated_at: ts, deleted_at: null,
+  }
+  await db.suppliers.put(row)
+  await enqueue({ type: 'upsert', entity: 'supplier', data: row })
+  engine.schedule()
+  return row.id
+}
+
+export async function softDeleteSupplier(id: string): Promise<void> {
+  const ts = nowIso()
+  const local = await db.suppliers.get(id)
+  if (local) await db.suppliers.put({ ...local, deleted_at: ts, updated_at: ts })
+  await enqueue({ type: 'delete', entity: 'supplier', data: { id, updated_at: ts } })
+  engine.schedule()
+}
+
+/**
+ * Parça↔tedarikçi bağı + fiyat kaydet/güncelle. id (part|supplier)'dan DETERMİNİSTİK
+ * (deterministicUuid) → iki offline cihaz aynı çift için aynı id üretir; uq_ps UNIQUE
+ * kısıtı LWW ile birleşir, çift satır / sonsuz-outbox olmaz (tasarım kararı).
+ */
+export async function savePartSupplier(input: {
+  partId: string; supplierId: string; supplierSku?: string | null; productUrl?: string | null;
+  lastPrice?: number | null; currency?: string
+}): Promise<string> {
+  const ts = nowIso()
+  const id = await deterministicUuid(`ps:${input.partId}|${input.supplierId}`)
+  const existing = await db.partSuppliers.get(id)
+  const priceChanged = input.lastPrice != null && input.lastPrice !== existing?.last_price
+  const row: PartSupplier = {
+    id, part_id: input.partId, supplier_id: input.supplierId,
+    supplier_sku: (input.supplierSku ?? existing?.supplier_sku ?? null) || null,
+    product_url: (input.productUrl ?? existing?.product_url ?? null) || null,
+    last_price: input.lastPrice ?? existing?.last_price ?? null,
+    currency: input.currency ?? existing?.currency ?? 'TRY',
+    last_price_at: priceChanged ? ts : (existing?.last_price_at ?? null),
+    updated_at: ts, deleted_at: null,
+  }
+  await db.partSuppliers.put(row)
+  await enqueue({ type: 'upsert', entity: 'part_supplier', data: row })
+  engine.schedule()
+  return id
+}
+
+export async function deletePartSupplier(id: string): Promise<void> {
+  const ts = nowIso()
+  const local = await db.partSuppliers.get(id)
+  if (local) await db.partSuppliers.put({ ...local, deleted_at: ts, updated_at: ts })
+  await enqueue({ type: 'delete', entity: 'part_supplier', data: { id, updated_at: ts } })
+  engine.schedule()
 }

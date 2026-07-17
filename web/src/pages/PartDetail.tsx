@@ -18,6 +18,7 @@ import { useToast } from '../components/Toast'
 import { IconEdit, IconTrash, IconCheck, IconMoveArrow, IconUndo } from '../components/icons'
 import { LocationPicker, resolveLeaf } from '../components/LocationPicker'
 import { PhotoGallery } from '../components/PhotoGallery'
+import { PartSuppliers } from '../components/PartSuppliers'
 
 const MODES: CountMode[] = ['exact', 'level', 'unmanaged']
 
@@ -357,6 +358,9 @@ export function PartDetail() {
         <div className="mb-3">
           <PhotoGallery ownerType="part" ownerId={part.id} canWrite={canWrite} />
         </div>
+
+        {/* Tedarikçiler & fiyat (FAZ 3b) */}
+        <PartSuppliers partId={part.id} canWrite={canWrite} />
 
         {/* Hareket geçmişi */}
         <div className="card mb-3 p-4">

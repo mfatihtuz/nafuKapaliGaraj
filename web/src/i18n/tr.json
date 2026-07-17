@@ -8,6 +8,23 @@
     "labels": "Etiket",
     "settings": "Ayarlar"
   },
+  "supplier": {
+    "title": "Tedarikçiler & Fiyat",
+    "add": "Tedarikçi ekle",
+    "empty": "Henüz tedarikçi/fiyat eklenmedi",
+    "new_or_pick": "Tedarikçi seç ya da yeni ekle…",
+    "name_placeholder": "Yeni tedarikçi adı (ör. LCSC, Direnç.net)",
+    "pick_or_name": "Bir tedarikçi seç ya da ad gir",
+    "sku": "Tedarikçi ürün kodu (opsiyonel)",
+    "url": "Ürün bağlantısı (opsiyonel)",
+    "price": "Birim fiyat",
+    "link": "ürün",
+    "cheapest": "en ucuz",
+    "saved": "Tedarikçi/fiyat kaydedildi",
+    "manage": "Tedarikçiler",
+    "rename": "Yeniden adlandır",
+    "delete_confirm": "Bu tedarikçi silinsin mi? Parça bağları kalır ama tedarikçi listelerden gizlenir."
+  },
   "project": {
     "new": "Yeni proje",
     "name": "Proje adı",

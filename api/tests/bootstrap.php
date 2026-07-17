@@ -109,6 +109,36 @@ function make_test_db(): array
       updated_at TEXT NOT NULL, deleted_at TEXT NULL,
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
     );
+    CREATE TABLE suppliers (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, website TEXT NULL,
+      updated_at TEXT NOT NULL, deleted_at TEXT NULL
+    );
+    CREATE TABLE part_suppliers (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, part_id TEXT NOT NULL, supplier_id TEXT NOT NULL,
+      supplier_sku TEXT NULL, product_url TEXT NULL, last_price NUMERIC NULL,
+      currency TEXT NOT NULL DEFAULT 'TRY', last_price_at TEXT NULL,
+      updated_at TEXT NOT NULL, deleted_at TEXT NULL,
+      UNIQUE (tenant_id, part_id, supplier_id)
+    );
+    CREATE TABLE loans (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, part_id TEXT NOT NULL, qty NUMERIC NOT NULL,
+      borrower TEXT NOT NULL, borrower_contact TEXT NULL, location_id TEXT NOT NULL,
+      out_at TEXT NOT NULL, due_at TEXT NULL, returned_at TEXT NULL, note TEXT NULL,
+      updated_at TEXT NOT NULL, deleted_at TEXT NULL
+    );
+    CREATE TABLE purchase_orders (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, supplier_id TEXT NULL,
+      status TEXT NOT NULL DEFAULT 'draft', ordered_at TEXT NULL, received_at TEXT NULL,
+      total NUMERIC NULL, currency TEXT NOT NULL DEFAULT 'TRY', note TEXT NULL,
+      updated_at TEXT NOT NULL, deleted_at TEXT NULL
+    );
+    CREATE TABLE po_items (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, po_id TEXT NOT NULL, part_id TEXT NULL,
+      raw_name TEXT NULL, qty NUMERIC NOT NULL, unit_price NUMERIC NULL,
+      received_qty NUMERIC NOT NULL DEFAULT 0, target_location_id TEXT NULL,
+      updated_at TEXT NOT NULL, deleted_at TEXT NULL,
+      FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE
+    );
     SQL;
 
     $pdo->exec($ddl);

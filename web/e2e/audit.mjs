@@ -1273,6 +1273,24 @@ await sect('CC-project-fixes', {}, async ({ page, pageErrors }) => {
   check('CC6 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ DD. TEDARİKÇİ + FİYAT (FAZ 3b 3.5) ════════════════════════════════════
+await sect('DD-suppliers', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'parts/p-r', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  check('DD1 Tedarikçiler kartı görünür', (await bodyText(page)).includes('Tedarikçiler'))
+  await page.getByRole('button', { name: /Tedarikçi ekle/ }).click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder*="Yeni tedarikçi"]').fill('LCSC')
+  await page.locator('input[placeholder*="Birim fiyat"]').fill('0,50')
+  await page.locator('.rounded-lg.border').getByRole('button', { name: 'Kaydet', exact: true }).click(); await page.waitForTimeout(700)
+  const sups = await dexie(page, 'suppliers')
+  const ps = await dexie(page, 'partSuppliers')
+  check('DD2 tedarikçi oluştu (LCSC)', sups.some((s) => s.name === 'LCSC'))
+  const link = ps.find((x) => x.part_id === 'p-r')
+  check('DD3 part_supplier bağı + fiyat (0.5)', !!link && Number(link.last_price) === 0.5, JSON.stringify({ p: link?.last_price }))
+  check('DD4 part_supplier id deterministik (uuid formatı)', !!link && /^[0-9a-f-]{36}$/.test(link.id))
+  check('DD5 last_price_at damgalandı', !!link?.last_price_at)
+  check('DD6 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ---------------------------------------------------------------------------
 await browser.close()
 const fails = results.filter((r) => !r.ok)

@@ -75,6 +75,11 @@ export interface BootstrapResult {
   attachments: Record<string, unknown>[]
   projects: Record<string, unknown>[]
   bom_items: Record<string, unknown>[]
+  suppliers: Record<string, unknown>[]
+  part_suppliers: Record<string, unknown>[]
+  loans: Record<string, unknown>[]
+  purchase_orders: Record<string, unknown>[]
+  po_items: Record<string, unknown>[]
   stock_snapshot: Record<string, unknown>[]
   stock_transactions: Record<string, unknown>[]
   cursor: number

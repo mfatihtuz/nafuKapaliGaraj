@@ -3,7 +3,7 @@
 import Dexie, { type Table } from 'dexie'
 import type {
   Part, Location, Category, Stock, Transaction, OutboxOp, MetaRow, AuthState, TenantInfo,
-  Attachment, PendingUpload, Project, BomItem,
+  Attachment, PendingUpload, Project, BomItem, Supplier, PartSupplier, Loan, PurchaseOrder, PoItem,
 } from './types'
 
 export class DepoDB extends Dexie {
@@ -18,6 +18,11 @@ export class DepoDB extends Dexie {
   uploads!: Table<PendingUpload, string>   // giden yükleme kuyruğu (blob YEREL)
   projects!: Table<Project, string>        // FAZ 3a — proje (LWW katalog)
   bomItems!: Table<BomItem, string>        // FAZ 3a — BOM satırı (LWW katalog)
+  suppliers!: Table<Supplier, string>      // FAZ 3b — tedarikçi
+  partSuppliers!: Table<PartSupplier, string> // FAZ 3b — parça↔tedarikçi + fiyat
+  loans!: Table<Loan, string>              // FAZ 3b — ödünç
+  purchaseOrders!: Table<PurchaseOrder, string> // FAZ 3b — sipariş
+  poItems!: Table<PoItem, string>          // FAZ 3b — sipariş satırı
 
   constructor() {
     super('depo')
@@ -58,6 +63,25 @@ export class DepoDB extends Dexie {
       uploads: 'id, [owner_type+owner_id], owner_id, created_at',
       projects: 'id, status, location_id, updated_at, deleted_at',
       bomItems: 'id, project_id, part_id, updated_at, deleted_at',
+    })
+    // v4 (FAZ 3b): tedarikçi + ödünç + sipariş. Yeni tablolar boş başlar, ilk sync'te dolar.
+    this.version(4).stores({
+      parts: 'id, sku, category_id, count_mode, updated_at, deleted_at',
+      locations: 'id, code, parent_id, type, sort_order, updated_at',
+      categories: 'id, code, parent_id, sort_order, updated_at',
+      stock: 'key, part_id, location_id',
+      transactions: 'id, part_id, location_id, created_at',
+      outbox: '++seq, &op_id, created_at',
+      meta: 'key',
+      attachments: 'id, [owner_type+owner_id], owner_id, sha256, updated_at, deleted_at',
+      uploads: 'id, [owner_type+owner_id], owner_id, created_at',
+      projects: 'id, status, location_id, updated_at, deleted_at',
+      bomItems: 'id, project_id, part_id, updated_at, deleted_at',
+      suppliers: 'id, name, updated_at, deleted_at',
+      partSuppliers: 'id, part_id, supplier_id, [part_id+supplier_id], updated_at, deleted_at',
+      loans: 'id, part_id, location_id, returned_at, updated_at, deleted_at',
+      purchaseOrders: 'id, supplier_id, status, updated_at, deleted_at',
+      poItems: 'id, po_id, part_id, updated_at, deleted_at',
     })
   }
 }
@@ -104,5 +128,6 @@ export async function wipeLocalData(): Promise<void> {
     db.parts.clear(), db.locations.clear(), db.categories.clear(),
     db.stock.clear(), db.transactions.clear(), db.outbox.clear(), db.meta.clear(),
     db.attachments.clear(), db.uploads.clear(), db.projects.clear(), db.bomItems.clear(),
+    db.suppliers.clear(), db.partSuppliers.clear(), db.loans.clear(), db.purchaseOrders.clear(), db.poItems.clear(),
   ])
 }
