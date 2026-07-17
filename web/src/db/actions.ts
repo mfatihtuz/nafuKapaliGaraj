@@ -5,7 +5,7 @@ import { db } from './dexie'
 import type {
   Part, Location, Category, Stock, StockLevel, TxReason, Transaction, OutboxOp,
   AttachmentOwnerType, AttachmentKind, PendingUpload, Project, ProjectStatus, BomItem,
-  Supplier, PartSupplier,
+  Supplier, PartSupplier, Loan,
 } from './types'
 import { uuidv7, deterministicUuid } from '../lib/uuid'
 import { nowIso } from '../lib/format'
@@ -595,5 +595,116 @@ export async function deletePartSupplier(id: string): Promise<void> {
   const local = await db.partSuppliers.get(id)
   if (local) await db.partSuppliers.put({ ...local, deleted_at: ts, updated_at: ts })
   await enqueue({ type: 'delete', entity: 'part_supplier', data: { id, updated_at: ts } })
+  engine.schedule()
+}
+
+// --- Ödünç (FAZ 3b — 3.4) ---------------------------------------------------
+
+/**
+ * Borçlu-başına 'LOAN-<slug>' sanal konumu bul-veya-oluştur. Aynı borçluya verilen tüm
+ * ödünçler TEK gözde toplanır (borçlu bazlı görünüm). Farklı borçlu aynı slug'a düşerse sonek.
+ */
+async function loanLocationForBorrower(borrower: string): Promise<{ id: string; created: Location | null }> {
+  const slug = foldToAscii(borrower).toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 16) || 'X'
+  const code = `LOAN-${slug}`
+  const all = await db.locations.toArray()
+  const existing = all.find((l) => l.type === 'loan' && l.code === code && !l.deleted_at)
+  if (existing) return { id: existing.id, created: null }
+  const codes = new Set(all.map((l) => l.code))
+  let finalCode = code
+  if (codes.has(finalCode)) { let i = 2; while (codes.has(`${code}-${i}`)) i++; finalCode = `${code}-${i}` }
+  const ts = nowIso()
+  const loc: Location = {
+    id: uuidv7(), parent_id: null, code: finalCode, name: borrower, type: 'loan', path: finalCode,
+    photo_id: null, capacity_note: null, sort_order: 0, updated_at: ts, deleted_at: null,
+  }
+  return { id: loc.id, created: loc }
+}
+
+/**
+ * Parçayı ödünç ver: kaynak gözden borçlunun LOAN-* gözüne transfer (iki bacak, reason
+ * 'loan_out', ref_id=loanId) + ödünç kaydı (LWW). Konum + ödünç kaydı TEK yerel transaction'da;
+ * stok bacakları defter (moveStock) ile. qty mevcut stokla SINIRLANIR (çağıran taraf clamp'ler).
+ * @throws Error('BORROWER_REQUIRED') | Error('QTY_ZERO')
+ */
+export async function lendPart(input: {
+  part: Part; fromLocationId: string; qty: number; borrower: string;
+  borrowerContact?: string | null; dueAt?: string | null; note?: string | null; fromLevel?: StockLevel | null;
+}): Promise<string> {
+  const { part } = input
+  const borrower = input.borrower.trim()
+  if (!borrower) throw new Error('BORROWER_REQUIRED')
+  const isLevel = part.count_mode === 'level'
+  const n = isLevel ? 1 : Math.max(0, Math.floor(input.qty))
+  if (!isLevel && n === 0) throw new Error('QTY_ZERO')
+
+  const { id: loanLocId, created: newLoc } = await loanLocationForBorrower(borrower)
+  const ts = nowIso()
+  const loanId = uuidv7()
+  const loan: Loan = {
+    id: loanId, part_id: part.id, qty: n, borrower,
+    borrower_contact: (input.borrowerContact ?? null) || null,
+    location_id: loanLocId, out_at: ts, due_at: input.dueAt ?? null,
+    returned_at: null, note: (input.note ?? null) || null,
+    updated_at: ts, deleted_at: null,
+  }
+  // Konum (gerekiyorsa) + ödünç kaydı atomik; konum op'u ödünç op'undan ÖNCE (FK sırası).
+  const ops: OutboxOp[] = []
+  if (newLoc) ops.push({ op_id: uuidv7(), type: 'upsert', entity: 'location', data: newLoc, created_at: Date.now(), attempts: 0 })
+  ops.push({ op_id: uuidv7(), type: 'upsert', entity: 'loan', data: loan, created_at: Date.now(), attempts: 0 })
+  await db.transaction('rw', db.locations, db.loans, db.outbox, async () => {
+    if (newLoc) await db.locations.put(newLoc)
+    await db.loans.put(loan)
+    await db.outbox.bulkAdd(ops)
+  })
+  // Stok: kaynaktan çıkar, LOAN gözüne ekle (reason loan_out, ref_id=loanId).
+  const refId = loanId
+  if (isLevel) {
+    await setLevel(part.id, loanLocId, input.fromLevel ?? 'full', null, { reason: 'loan_out', refId })
+    await setLevel(part.id, input.fromLocationId, 'empty', null, { reason: 'loan_out', refId })
+  } else {
+    await moveStock({ partId: part.id, locationId: input.fromLocationId, delta: -n, reason: 'loan_out', refId })
+    await moveStock({ partId: part.id, locationId: loanLocId, delta: n, reason: 'loan_out', refId })
+  }
+  engine.schedule()
+  return loanId
+}
+
+/**
+ * Ödüncü iade al: borçlunun LOAN-* gözünden hedef göze geri transfer (reason 'loan_return',
+ * ref_id=loanId) + ödünç kaydını KAPAT (returned_at LWW upsert — SİLİNMEZ). Tam iade.
+ * Bacak id'leri loanId'den DETERMİNİSTİK → aynı iade iki kez uygulanmaz (idempotent).
+ */
+export async function returnLoan(
+  loan: Loan, part: Part, toLocationId: string, loanLevel?: StockLevel | null,
+): Promise<void> {
+  if (loan.returned_at) return // zaten kapalı
+  const refId = loan.id
+  if (part.count_mode === 'level') {
+    const tIn = await deterministicUuid('loanret:in:' + loan.id)
+    const tOut = await deterministicUuid('loanret:out:' + loan.id)
+    await setLevel(part.id, toLocationId, loanLevel ?? 'full', null, { reason: 'loan_return', refId, txId: tIn })
+    await setLevel(part.id, loan.location_id, 'empty', null, { reason: 'loan_return', refId, txId: tOut })
+  } else {
+    const n = Math.max(0, Number(loan.qty))
+    if (n > 0) {
+      const tOut = await deterministicUuid('loanret:out:' + loan.id)
+      const tIn = await deterministicUuid('loanret:in:' + loan.id)
+      await moveStock({ partId: part.id, locationId: loan.location_id, delta: -n, reason: 'loan_return', refId, txId: tOut })
+      await moveStock({ partId: part.id, locationId: toLocationId, delta: n, reason: 'loan_return', refId, txId: tIn })
+    }
+  }
+  const ts = nowIso()
+  const closed: Loan = { ...loan, returned_at: ts, updated_at: ts }
+  await db.loans.put(closed)
+  await enqueue({ type: 'upsert', entity: 'loan', data: closed })
+  engine.schedule()
+}
+
+/** Ödünç kaydının metadata'sını güncelle (vade/not/iletişim). Stok DEĞİŞTİRMEZ. */
+export async function saveLoan(loan: Loan): Promise<void> {
+  const row: Loan = { ...loan, updated_at: nowIso() }
+  await db.loans.put(row)
+  await enqueue({ type: 'upsert', entity: 'loan', data: row })
   engine.schedule()
 }

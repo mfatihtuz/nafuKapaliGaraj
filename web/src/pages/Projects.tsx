@@ -7,7 +7,7 @@ import type { Project, ProjectStatus } from '../db/types'
 import { useT } from '../i18n'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../auth/AuthContext'
-import { IconProject, IconPlus, IconCheck } from '../components/icons'
+import { IconProject, IconPlus, IconCheck, IconLoan } from '../components/icons'
 
 const STATUS_ORDER: ProjectStatus[] = ['active', 'planned', 'done', 'archived']
 
@@ -73,11 +73,17 @@ export function Projects() {
   return (
     <>
       <AppHeader title={t('nav.projects')} right={
-        canWrite ? (
-          <button onClick={() => setCreating((v) => !v)} className="btn-primary h-9 px-3 text-sm">
-            <IconPlus size={16} /> {t('project.new')}
-          </button>
-        ) : null
+        <div className="flex items-center gap-2">
+          <Link to="/loans" title={t('loan.page_title')} aria-label={t('loan.page_title')}
+            className="btn-ghost h-9 px-3 text-sm">
+            <IconLoan size={16} /> <span className="hidden sm:inline">{t('loan.page_title')}</span>
+          </Link>
+          {canWrite && (
+            <button onClick={() => setCreating((v) => !v)} className="btn-primary h-9 px-3 text-sm">
+              <IconPlus size={16} /> {t('project.new')}
+            </button>
+          )}
+        </div>
       } />
       <Container>
         {creating && (

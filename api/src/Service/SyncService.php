@@ -9,6 +9,7 @@ use Depo\Core\Uuid;
 use Depo\Repository\AttachmentRepository;
 use Depo\Repository\CategoryRepository;
 use Depo\Repository\ChangeLogRepository;
+use Depo\Repository\LoanRepository;
 use Depo\Repository\LocationRepository;
 use Depo\Repository\BomRepository;
 use Depo\Repository\PartRepository;
@@ -37,6 +38,7 @@ final class SyncService
     private BomRepository $bom;
     private SupplierRepository $suppliers;
     private PartSupplierRepository $partSuppliers;
+    private LoanRepository $loans;
     private StockRepository $stock;
     private TransactionRepository $tx;
     private ChangeLogRepository $changeLog;
@@ -57,6 +59,7 @@ final class SyncService
         $this->bom = new BomRepository($db, $tenantId, $clockSkewMinutes);
         $this->suppliers = new SupplierRepository($db, $tenantId, $clockSkewMinutes);
         $this->partSuppliers = new PartSupplierRepository($db, $tenantId, $clockSkewMinutes);
+        $this->loans = new LoanRepository($db, $tenantId, $clockSkewMinutes);
         $this->stock = new StockRepository($db, $tenantId);
         $this->tx = new TransactionRepository($db, $tenantId, $clockSkewMinutes);
         $this->changeLog = new ChangeLogRepository($db, $tenantId);
@@ -95,6 +98,7 @@ final class SyncService
                 'bom_items'          => $this->bom->allActive(),
                 'suppliers'          => $this->suppliers->allActive(),
                 'part_suppliers'     => $this->partSuppliers->allActive(),
+                'loans'              => $this->loans->allActive(),
                 'stock_snapshot'     => $this->stock->snapshot(),
                 'stock_transactions' => $this->tx->recentForBootstrap(90),
                 'cursor'             => $this->changeLog->maxSeq(),
@@ -308,7 +312,7 @@ final class SyncService
         $this->syncOps->record($opId);
     }
 
-    private function catalogRepo(string $entity): PartRepository|LocationRepository|CategoryRepository|AttachmentRepository|ProjectRepository|BomRepository|SupplierRepository|PartSupplierRepository
+    private function catalogRepo(string $entity): PartRepository|LocationRepository|CategoryRepository|AttachmentRepository|ProjectRepository|BomRepository|SupplierRepository|PartSupplierRepository|LoanRepository
     {
         return match ($entity) {
             'part'       => $this->parts,
@@ -319,6 +323,7 @@ final class SyncService
             'bom_item'      => $this->bom,          // FAZ 3a — proje op'undan SONRA (FK sırası)
             'supplier'      => $this->suppliers,    // FAZ 3b — LWW katalog
             'part_supplier' => $this->partSuppliers, // FAZ 3b — deterministik id (uq_ps)
+            'loan'          => $this->loans,        // FAZ 3b — ödünç kaydı (LWW; stok ayrı defterde)
             default      => throw HttpException::unprocessable('Senkronlanamayan varlık: ' . $entity),
         };
     }

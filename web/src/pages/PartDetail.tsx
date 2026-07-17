@@ -19,6 +19,7 @@ import { IconEdit, IconTrash, IconCheck, IconMoveArrow, IconUndo } from '../comp
 import { LocationPicker, resolveLeaf } from '../components/LocationPicker'
 import { PhotoGallery } from '../components/PhotoGallery'
 import { PartSuppliers } from '../components/PartSuppliers'
+import { LoanSection } from '../components/LoanSection'
 
 const MODES: CountMode[] = ['exact', 'level', 'unmanaged']
 
@@ -353,6 +354,9 @@ export function PartDetail() {
             </div>
           )}
         </div>
+
+        {/* Ödünç (FAZ 3b 3.4) */}
+        <LoanSection part={part} places={places} allLocations={locations} canWrite={canWrite} />
 
         {/* Fotoğraflar (FAZ 2.1) */}
         <div className="mb-3">

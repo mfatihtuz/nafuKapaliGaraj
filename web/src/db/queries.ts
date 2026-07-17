@@ -2,7 +2,7 @@
 
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from './dexie'
-import type { Part, Location, Category, Stock, Attachment, PendingUpload, AttachmentOwnerType, Project, BomItem, Supplier, PartSupplier } from './types'
+import type { Part, Location, Category, Stock, Attachment, PendingUpload, AttachmentOwnerType, Project, BomItem, Supplier, PartSupplier, Loan } from './types'
 import { searchMatch } from '../lib/normalize'
 import { isFreeStock } from '../lib/freeStock'
 
@@ -448,4 +448,42 @@ export function usePartBestPrice(partId: string | undefined): PartSupplier | und
       .sort((a, b) => (a.last_price ?? Infinity) - (b.last_price ?? Infinity))
     return rows[0]
   }, [partId])
+}
+
+// --- Ödünç (FAZ 3b — 3.4) ---------------------------------------------------
+
+/** Açık (iade edilmemiş) ödünçler; vadesi yakın/geçmiş önce, sonra en yeni. */
+export function useOpenLoans(): Loan[] {
+  return useLiveQuery(
+    async () => (await db.loans.filter((l) => !l.deleted_at && !l.returned_at).toArray())
+      .sort((a, b) => {
+        // Vadeli olanlar önce (yaklaşan/geçmiş yukarı), vadesizler sona; eşitlikte yeni önce.
+        const da = a.due_at ?? '￿', dbb = b.due_at ?? '￿'
+        if (da !== dbb) return da < dbb ? -1 : 1
+        return a.out_at < b.out_at ? 1 : -1
+      }),
+    [], [],
+  )
+}
+
+/** Tüm ödünçler (geçmiş dahil), en yeni önce. */
+export function useAllLoans(): Loan[] {
+  return useLiveQuery(
+    async () => (await db.loans.filter((l) => !l.deleted_at).toArray())
+      .sort((a, b) => (a.out_at < b.out_at ? 1 : -1)),
+    [], [],
+  )
+}
+
+/** Bir parçanın açık ödünçleri (parça detayında "ödünçte" rozeti/listesi). */
+export function useLoansForPart(partId: string | undefined): Loan[] {
+  return useLiveQuery(
+    async () => {
+      if (!partId) return []
+      return (await db.loans.where('part_id').equals(partId).toArray())
+        .filter((l) => !l.deleted_at && !l.returned_at)
+        .sort((a, b) => (a.out_at < b.out_at ? 1 : -1))
+    },
+    [partId], [],
+  )
 }

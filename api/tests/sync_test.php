@@ -634,4 +634,63 @@ fwrite(STDOUT, "\nTEST 22 — Tedarikçiler + part_suppliers (FAZ 3b 3.5): LWW, 
     eq(count($rCross['rejected']), 1, 'B, A parçası+tedarikçisini bağlayamaz (çapraz-tenant reddi)');
 }
 
+fwrite(STDOUT, "\nTEST 23 — Ödünç (FAZ 3b 3.4): loan LWW kaydı + loan_out/loan_return defteri (ref_id), tenant izolasyonu\n");
+{
+    [$db] = make_test_db();
+    $t = seed_tenant($db);
+    $svc = new SyncService($db, $t['tenant_id'], $t['user_id']);
+    $ids = scaffold($svc);
+
+    // Başlangıç stoğu: rafta 20 adet
+    $svc->push([opMove($ids['part_id'], $ids['location_id'], 20, 'initial', iso(1))]);
+
+    // Borçlu-başına sanal LOAN konumu (type='loan')
+    $loanLocId = Uuid::v7();
+    $svc->push([opUpsertLocation(['id' => $loanLocId, 'code' => 'LOAN-AHMET', 'type' => 'loan',
+        'path' => 'LOAN/AHMET', 'updated_at' => iso(2)])]);
+
+    // Ödünç kaydı (LWW katalog) — qty yalnızca metadata
+    $loanId = Uuid::v7();
+    $opLoan = ['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'loan',
+        'data' => ['id' => $loanId, 'part_id' => $ids['part_id'], 'qty' => 5, 'borrower' => 'Ahmet',
+                   'location_id' => $loanLocId, 'out_at' => iso(3), 'due_at' => iso(1000), 'updated_at' => iso(3)]];
+    // Stok iki ayaklı: raftan -5, LOAN konumuna +5 (reason=loan_out, ref_id=loanId)
+    $outSrc = opMove($ids['part_id'], $ids['location_id'], -5, 'loan_out', iso(3));
+    $outSrc['data']['ref_id'] = $loanId;
+    $outDst = opMove($ids['part_id'], $loanLocId, 5, 'loan_out', iso(3));
+    $outDst['data']['ref_id'] = $loanId;
+    $r = $svc->push([$opLoan, $outSrc, $outDst]);
+    eq(count($r['applied']), 3, 'loan kaydı + 2 loan_out ayağı uygulandı');
+    eq(count($r['rejected']), 0, 'reddedilen yok');
+
+    $boot = $svc->bootstrap();
+    eq(count($boot['loans']), 1, 'bootstrap 1 ödünç kaydı');
+    eq(currentQty($svc, $ids['part_id'], $ids['location_id']), 15.0, 'raf 20-5=15');
+    eq(currentQty($svc, $ids['part_id'], $loanLocId), 5.0, 'LOAN konumunda 5');
+
+    // İade: LOAN'dan -5, rafa +5 (loan_return) + loan kaydını kapat (returned_at LWW upsert)
+    $inSrc = opMove($ids['part_id'], $loanLocId, -5, 'loan_return', iso(2000));
+    $inSrc['data']['ref_id'] = $loanId;
+    $inDst = opMove($ids['part_id'], $ids['location_id'], 5, 'loan_return', iso(2000));
+    $inDst['data']['ref_id'] = $loanId;
+    $opClose = ['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'loan',
+        'data' => ['id' => $loanId, 'part_id' => $ids['part_id'], 'qty' => 5, 'borrower' => 'Ahmet',
+                   'location_id' => $loanLocId, 'out_at' => iso(3), 'returned_at' => iso(2000), 'updated_at' => iso(2000)]];
+    $r2 = $svc->push([$inSrc, $inDst, $opClose]);
+    eq(count($r2['rejected']), 0, 'iade ayakları + kapatma reddedilmedi');
+    eq(currentQty($svc, $ids['part_id'], $ids['location_id']), 20.0, 'iade sonrası raf 20');
+    eq(currentQty($svc, $ids['part_id'], $loanLocId), 0.0, 'iade sonrası LOAN konumu 0');
+    $loanRow = $db->one('SELECT returned_at FROM loans WHERE id = :id', ['id' => $loanId]);
+    check($loanRow !== null && $loanRow['returned_at'] !== null, 'ödünç kaydı kapatıldı (returned_at doldu, silinmedi)');
+
+    // Tenant izolasyonu: B tenant A'nın ödüncünü görmez, A'nın parçasını ödünç bağlayamaz
+    $tb = seed_tenant($db, 'B');
+    $svcB = new SyncService($db, $tb['tenant_id'], $tb['user_id']);
+    eq(count($svcB->bootstrap()['loans']), 0, 'B tenant A ödüncünü görmez');
+    $rCross = $svcB->push([['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'loan',
+        'data' => ['id' => Uuid::v7(), 'part_id' => $ids['part_id'], 'qty' => 1, 'borrower' => 'X',
+                   'location_id' => $loanLocId, 'out_at' => iso(3000), 'updated_at' => iso(3000)]]]);
+    eq(count($rCross['rejected']), 1, 'B, A parçasını ödünç bağlayamaz (çapraz-tenant reddi)');
+}
+
 exit(test_summary());

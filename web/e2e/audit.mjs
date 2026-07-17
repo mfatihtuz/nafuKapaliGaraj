@@ -1291,6 +1291,47 @@ await sect('DD-suppliers', {}, async ({ page, pageErrors }) => {
   check('DD6 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ EE. ÖDÜNÇ (FAZ 3b 3.4) ════════════════════════════════════════════════
+await sect('EE-loans', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'parts/p-r', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  check('EE1 Ödünç kartı görünür', (await bodyText(page)).includes('Ödünç'))
+
+  // Ödünç ver formunu aç (kart başlığındaki buton) → borçlu + adet 10
+  await page.getByRole('button', { name: /Ödünç ver/ }).first().click(); await page.waitForTimeout(250)
+  await page.locator('input[placeholder*="Kime"]').fill('Mehmet Usta')
+  await page.locator('input.w-24.text-center').fill('10'); await page.waitForTimeout(150)
+  await page.locator('button.btn-navy', { hasText: 'Ödünç ver' }).click(); await page.waitForTimeout(700)
+
+  const loans = await dexie(page, 'loans')
+  const loan = loans.find((l) => l.part_id === 'p-r' && !l.returned_at)
+  check('EE2 ödünç kaydı oluştu (Mehmet Usta, 10)', !!loan && loan.borrower === 'Mehmet Usta' && Number(loan.qty) === 10, JSON.stringify(loan))
+  const locs = await dexie(page, 'locations')
+  const loanLoc = locs.find((l) => l.type === 'loan')
+  check('EE3 borçlu LOAN-* sanal konumu oluştu', !!loanLoc && /^LOAN-/.test(loanLoc.code), loanLoc?.code)
+  let stock = await dexie(page, 'stock')
+  check('EE4 kaynak gözden düştü (d1: 50→40)', stock.find((s) => s.key === 'p-r|d1')?.qty === 40, JSON.stringify(stock.find((s) => s.key === 'p-r|d1')))
+  check('EE5 LOAN gözünde 10', !!loanLoc && stock.find((s) => s.part_id === 'p-r' && s.location_id === loanLoc.id)?.qty === 10)
+  const outbox = await dexie(page, 'outbox')
+  check('EE6 outbox: loan upsert + 2 loan_out hareketi', outbox.some((o) => o.entity === 'loan') && outbox.filter((o) => o.type === 'stock_move').length >= 2, outbox.map((o) => o.entity || o.type).join(','))
+
+  // Ödünçler ekranı borçluyu listeler (useLiveQuery — metin belirene dek bekle).
+  // NOT: section-title CSS text-transform:uppercase → innerText "MEHMET USTA" döner; karşılaştırma küçük harfe indirir.
+  await page.goto(BASE + 'loans', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.waitForFunction(() => document.body.innerText.toLowerCase().includes('mehmet usta'), { timeout: 4000 }).catch(() => {})
+  check('EE7 Ödünçler ekranı borçluyu listeler', (await bodyText(page)).toLowerCase().includes('mehmet usta'))
+
+  // İade al → D1'e geri
+  await page.getByRole('button', { name: /İade al/ }).first().click(); await page.waitForTimeout(250)
+  await page.locator('input[placeholder*="onum kodu"]').fill('D1'); await page.waitForTimeout(250)
+  await page.locator('button.btn-primary', { hasText: 'İade al' }).click(); await page.waitForTimeout(700)
+  stock = await dexie(page, 'stock')
+  check('EE8 iade sonrası kaynak geri doldu (d1: 40→50)', stock.find((s) => s.key === 'p-r|d1')?.qty === 50, JSON.stringify(stock.find((s) => s.key === 'p-r|d1')))
+  check('EE9 iade sonrası LOAN gözü 0', !!loanLoc && (stock.find((s) => s.part_id === 'p-r' && s.location_id === loanLoc.id)?.qty ?? 0) === 0)
+  const loans2 = await dexie(page, 'loans')
+  check('EE10 ödünç kapatıldı (returned_at doldu, silinmedi)', !!loans2.find((l) => l.id === loan.id)?.returned_at)
+  check('EE11 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ---------------------------------------------------------------------------
 await browser.close()
 const fails = results.filter((r) => !r.ok)
