@@ -4,6 +4,43 @@ Her oturum sonunda güncellenir: ne yapıldı / ne kaldı / bilinen sorunlar.
 
 ---
 
+## 2026-07-17 · FAZ 3a TAMAMLANDI — Projeler + BOM + "Yapabilir miyim?" + proje sanal konumu
+
+**Tasarım (çok-yaklaşım workflow jürisi kazananı):** SIFIR yeni stok tesisatı. `projects`
++ `bom_items` = **LWW katalog varlıkları**; **proje = `type='project'` bir konum** →
+"projeye çek/iade/tüket" mevcut stok defterini (`moveStock`, `project_id`, transfer/consume)
+kullanır. **"Yapabilir miyim?" = saf Dexie türetmesi** (sunucu ucu YOK, uçak modunda çalışır).
+Kanonik **`isFreeStock`** (proje/ödünç/karantina "elde"den dışlanır) feasibility + alışveriş
+listesinde tek kaynak.
+
+**Kapsam:**
+- **3.1 Projeler + BOM:** proje listesi (durum-gruplu), yeni proje (sanal konum otomatik),
+  BOM içe aktarma (KiCad/CSV → MPN→SKU→değer+footprint eşleştirme, `bomImport`/`bomMatch`),
+  elle parça eşleştirme.
+- **3.2 "Yapabilir miyim?":** yeşil/kırmızı bant + eksik/eşleşmemiş liste (canlı, offline).
+- **3.3 Proje sanal konumu:** her BOM kalemi için "Çek" (çok serbest çekmeceden toplar),
+  proje gözü içeriği (iade/tüket), stok defterinde `project_id`.
+
+**DB:** `db/migrations/008_projects_bom.sql` — additive ALTER (bom_items KiCad ham alanları
++ 2 indeks). projects/bom_items 001'de vardı, hiç kullanılmamıştı → DROP yok, veri kaybı yok.
+schema.sql eşitlendi. **Sunucu değişikliği minimal:** 2 repo + SyncService bağlama + proje
+delete cascade.
+
+**Adversarial inceleme (5 boyut):** 15 bulgu; doğrulananlar düzeltildi — çift-dokunuş kilidi
+(negatif stok), öz-stok feasibility, çok-konum çekme, BOM yanlış-eşleşme (footprint/substring),
+proje-delete BOM cascade. Bilinçli ertelenen: çok-cihaz eşzamanlı çekme delta-negatifi
+(ürünleştirme), arama proje/ödünç gözlerini gösterir (bilgilendirici, "nerede" sorusu),
+proje listesi feasibility N+1 (garaj ölçeğinde sorun değil).
+
+**Karar varsayılanları (araç hatasıyla sorulamadı; sonradan değiştirilebilir):** BOM formatı
+gruplanmış+MPN-öncelikli · yeniden içe aktarma = değiştir · bitiş = elle iade uyarısı (stok
+varken arşiv engellenir) · feasibility 'elde' = tezgah serbest (proje/ödünç/karantina hariç).
+
+**Test:** PHP **138** (sync 76), E2E **205** (BB projeler + CC öz-stok/çok-konum), tsc+build
+temiz. Commit'ler: `c307589` backend · `96feb30` client · `7b489d3` UI · `cd7d57d` düzeltmeler.
+
+---
+
 ## 2026-07-16 · Barkod tarama + son hareketi geri al (hızlı kazanımlar)
 
 **Barkod:** `lib/scanner.ts` multiFormat (BrowserMultiFormatReader — QR + EAN/UPC/
