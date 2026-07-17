@@ -281,9 +281,14 @@ export function useShoppingList(): ShoppingItem[] {
       const parts = await db.parts.filter((p) => !p.deleted_at).toArray()
       const categories = await db.categories.toArray()
       const nameById = new Map(categories.map((c) => [c.id, c.name_tr]))
+      // 'Elde' = yalnız SERBEST konumlar (isFreeStock): projeye çekilmiş/ödünç/karantina
+      // stok yeniden-sipariş ihtiyacını MASKELEMEZ (feasibility ile aynı kanonik tanım).
+      const locs = await db.locations.toArray()
+      const locById = new Map(locs.map((l) => [l.id, l]))
       const out: ShoppingItem[] = []
       for (const part of parts) {
-        const rows = await db.stock.where('part_id').equals(part.id).toArray()
+        const allRows = await db.stock.where('part_id').equals(part.id).toArray()
+        const rows = allRows.filter((r) => isFreeStock(locById.get(r.location_id)))
         const catName = part.category_id ? nameById.get(part.category_id) ?? null : null
         if (part.count_mode === 'exact') {
           if (part.min_qty == null) continue

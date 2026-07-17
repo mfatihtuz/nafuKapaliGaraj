@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { IconScan, IconSearch, IconPlus, IconTag, IconSettings } from './icons'
+import { IconScan, IconSearch, IconPlus, IconTag, IconSettings, IconProject } from './icons'
 
 export interface NavItem {
   to: string
@@ -13,6 +13,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/scan', key: 'nav.scan', Icon: IconScan },
   { to: '/search', key: 'nav.search', Icon: IconSearch },
   { to: '/intake', key: 'nav.intake', Icon: IconPlus, write: true },
+  { to: '/projects', key: 'nav.projects', Icon: IconProject, write: true },
   { to: '/labels', key: 'nav.labels', Icon: IconTag },
   { to: '/settings', key: 'nav.settings', Icon: IconSettings },
 ]

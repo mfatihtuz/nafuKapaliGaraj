@@ -1201,6 +1201,46 @@ await sect('AA-mpn-backfill', {}, async ({ page, pageErrors }) => {
   check('AA3 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ BB. PROJELER + BOM + YAPABİLİR MİYİM + ÇEK (FAZ 3a) ═══════════════════
+await sect('BB-projects', {}, async ({ page, pageErrors }) => {
+  await page.goto(BASE + 'projects', { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  // Proje oluştur → sanal konum
+  await page.getByRole('button', { name: /Yeni proje/ }).click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder*="LED Saat"]').fill('Test Projesi')
+  await page.locator('.card').getByRole('button', { name: 'Kaydet', exact: true }).click(); await page.waitForTimeout(700)
+  const proj = (await dexie(page, 'projects')).find((p) => p.name === 'Test Projesi')
+  check('BB1 proje oluştu', !!proj && proj.status === 'planned', JSON.stringify({ n: proj?.name }))
+  const prjLoc = (await dexie(page, 'locations')).find((l) => l.id === proj?.location_id)
+  check('BB2 sanal konum kuruldu (type=project, PRJ-*)', prjLoc?.type === 'project' && /^PRJ-/.test(prjLoc?.code ?? ''), JSON.stringify({ code: prjLoc?.code, type: prjLoc?.type }))
+
+  // Projeye gir → BOM içe aktar (p-r "10K Direnç"e eşleşmeli)
+  await page.goto(BASE + `projects/${proj.id}`, { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  await page.locator('textarea').first().fill('ref;value;footprint;qty\nR1,R2;10k;R_0805;10'); await page.waitForTimeout(400)
+  check('BB3 BOM planı 1 eşleşti', (await bodyText(page)).includes('1 eşleşti'))
+  await page.getByRole('button', { name: /içe aktar \(mevcut BOM/ }).click(); await page.waitForTimeout(700)
+  const bom = (await dexie(page, 'bomItems')).find((b) => b.project_id === proj.id && !b.deleted_at)
+  check('BB4 BOM satırı p-r parçasına eşleşti', bom?.part_id === 'p-r' && Number(bom?.qty_needed) === 10, JSON.stringify({ pid: bom?.part_id, q: bom?.qty_needed }))
+  check('BB5 "Yapılabilir" (p-r stok 50 ≥ 10)', (await bodyText(page)).includes('yapılabilir') || (await bodyText(page)).includes('Yapılabilir'))
+
+  // Projeye çek → d1'den 10 adet proje gözüne
+  await page.getByRole('button', { name: 'Çek', exact: true }).first().click(); await page.waitForTimeout(800)
+  const st = await dexie(page, 'stock')
+  const d1 = st.find((s) => s.key === 'p-r|d1')
+  const prj = st.find((s) => s.part_id === 'p-r' && s.location_id === proj.location_id)
+  check('BB6 çekme: d1 50→40', Number(d1?.qty) === 40, `d1=${d1?.qty}`)
+  check('BB7 çekme: proje gözü 10', Number(prj?.qty) === 10, `prj=${prj?.qty}`)
+  const txs = (await dexie(page, 'transactions')).filter((t) => t.part_id === 'p-r' && t.project_id === proj.id && t.reason === 'transfer')
+  check('BB8 defterde project_id + transfer (iki bacak)', txs.length >= 2)
+
+  // Proje gözünde stok varken arşivleme ENGELLENİR
+  await page.goto(BASE + `projects/${proj.id}`, { waitUntil: 'networkidle' }); await page.waitForTimeout(400)
+  // (confirm dialog'u harness'in global page.on('dialog') handler'ı otomatik kabul eder)
+  await page.getByRole('button', { name: /Arşivle/ }).click(); await page.waitForTimeout(500)
+  const stillActive = (await dexie(page, 'projects')).find((p) => p.id === proj.id)
+  check('BB9 proje gözünde stok varken arşivlenmedi', !stillActive?.deleted_at && (await bodyText(page)).includes('hâlâ parça'))
+  check('BB10 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ---------------------------------------------------------------------------
 await browser.close()
 const fails = results.filter((r) => !r.ok)

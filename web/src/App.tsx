@@ -17,6 +17,8 @@ const Settings = lazyReload(() => import('./pages/Settings').then((m) => ({ defa
 const LocationView = lazyReload(() => import('./pages/LocationView').then((m) => ({ default: m.LocationView })))
 const PartDetail = lazyReload(() => import('./pages/PartDetail').then((m) => ({ default: m.PartDetail })))
 const Shopping = lazyReload(() => import('./pages/Shopping').then((m) => ({ default: m.Shopping })))
+const Projects = lazyReload(() => import('./pages/Projects').then((m) => ({ default: m.Projects })))
+const ProjectDetail = lazyReload(() => import('./pages/ProjectDetail').then((m) => ({ default: m.ProjectDetail })))
 
 const BASENAME = import.meta.env.BASE_URL.replace(/\/$/, '')
 
@@ -76,6 +78,8 @@ export default function App() {
               <Route path="l/:code" element={<LocationView />} />
               <Route path="parts/:id" element={<PartDetail />} />
               <Route path="shopping" element={<Shopping />} />
+              <Route path="projects" element={<Projects />} />
+              <Route path="projects/:id" element={<ProjectDetail />} />
               <Route path="*" element={<Navigate to="scan" replace />} />
             </Route>
           </Routes>
