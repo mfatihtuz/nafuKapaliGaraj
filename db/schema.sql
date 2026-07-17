@@ -252,19 +252,26 @@ CREATE TABLE projects (
   notes       TEXT         NULL,
   updated_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   deleted_at  DATETIME(3)  NULL,
-  KEY idx_proj_tenant (tenant_id, status)
+  KEY idx_proj_tenant (tenant_id, status),
+  KEY idx_proj_loc (tenant_id, location_id)  -- [008] proje sanal konumu aramaları
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE bom_items (
-  id          CHAR(36)      NOT NULL PRIMARY KEY,
-  tenant_id   CHAR(36)      NOT NULL,
-  project_id  CHAR(36)      NOT NULL,
-  part_id     CHAR(36)      NULL,     -- NULL: henüz eşleşmemiş satır (KiCad'den gelen ham)
-  raw_ref     VARCHAR(190)  NULL,     -- 'R1,R2,R5' veya ham MPN
-  qty_needed  DECIMAL(12,3) NOT NULL,
-  updated_at  DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  deleted_at  DATETIME(3)   NULL,
+  id            CHAR(36)      NOT NULL PRIMARY KEY,
+  tenant_id     CHAR(36)      NOT NULL,
+  project_id    CHAR(36)      NOT NULL,
+  part_id       CHAR(36)      NULL,     -- NULL: henüz eşleşmemiş satır (KiCad'den gelen ham)
+  raw_ref       VARCHAR(190)  NULL,     -- 'R1,R2,R5' referans belirteçleri
+  raw_value     VARCHAR(190)  NULL,     -- KiCad 'Value' ('10k') [008]
+  raw_footprint VARCHAR(120)  NULL,     -- 'R_0805' paket ayrımı [008]
+  raw_mpn       VARCHAR(120)  NULL,     -- ham üretici kodu [008]
+  note          VARCHAR(255)  NULL,     -- kullanıcı notu [008]
+  sort_order    INT           NOT NULL DEFAULT 0,  -- BOM sırası [008]
+  qty_needed    DECIMAL(12,3) NOT NULL,
+  updated_at    DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  deleted_at    DATETIME(3)   NULL,
   KEY idx_bom_proj (tenant_id, project_id),
+  KEY idx_bom_part (tenant_id, part_id),  -- [008] feasibility + projeye-çekme join'leri
   CONSTRAINT fk_bom_proj FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

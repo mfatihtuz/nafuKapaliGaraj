@@ -10,7 +10,9 @@ use Depo\Repository\AttachmentRepository;
 use Depo\Repository\CategoryRepository;
 use Depo\Repository\ChangeLogRepository;
 use Depo\Repository\LocationRepository;
+use Depo\Repository\BomRepository;
 use Depo\Repository\PartRepository;
+use Depo\Repository\ProjectRepository;
 use Depo\Repository\StockRepository;
 use Depo\Repository\SyncOpRepository;
 use Depo\Repository\TransactionRepository;
@@ -29,6 +31,8 @@ final class SyncService
     private LocationRepository $locations;
     private CategoryRepository $categories;
     private AttachmentRepository $attachments;
+    private ProjectRepository $projects;
+    private BomRepository $bom;
     private StockRepository $stock;
     private TransactionRepository $tx;
     private ChangeLogRepository $changeLog;
@@ -45,6 +49,8 @@ final class SyncService
         $this->locations = new LocationRepository($db, $tenantId, $clockSkewMinutes);
         $this->categories = new CategoryRepository($db, $tenantId, $clockSkewMinutes);
         $this->attachments = new AttachmentRepository($db, $tenantId, $clockSkewMinutes);
+        $this->projects = new ProjectRepository($db, $tenantId, $clockSkewMinutes);
+        $this->bom = new BomRepository($db, $tenantId, $clockSkewMinutes);
         $this->stock = new StockRepository($db, $tenantId);
         $this->tx = new TransactionRepository($db, $tenantId, $clockSkewMinutes);
         $this->changeLog = new ChangeLogRepository($db, $tenantId);
@@ -79,6 +85,8 @@ final class SyncService
                 'locations'          => $this->locations->allActive(),
                 'parts'              => $this->parts->allActive(),
                 'attachments'        => $this->attachments->allActive(),
+                'projects'           => $this->projects->allActive(),
+                'bom_items'          => $this->bom->allActive(),
                 'stock_snapshot'     => $this->stock->snapshot(),
                 'stock_transactions' => $this->tx->recentForBootstrap(90),
                 'cursor'             => $this->changeLog->maxSeq(),
@@ -282,13 +290,15 @@ final class SyncService
         $this->syncOps->record($opId);
     }
 
-    private function catalogRepo(string $entity): PartRepository|LocationRepository|CategoryRepository|AttachmentRepository
+    private function catalogRepo(string $entity): PartRepository|LocationRepository|CategoryRepository|AttachmentRepository|ProjectRepository|BomRepository
     {
         return match ($entity) {
             'part'       => $this->parts,
             'location'   => $this->locations,
             'category'   => $this->categories,
             'attachment' => $this->attachments, // yalnızca delete/sort push edilir; yükleme ayrı endpoint
+            'project'    => $this->projects,     // FAZ 3a — LWW katalog
+            'bom_item'   => $this->bom,          // FAZ 3a — proje op'undan SONRA (FK sırası)
             default      => throw HttpException::unprocessable('Senkronlanamayan varlık: ' . $entity),
         };
     }

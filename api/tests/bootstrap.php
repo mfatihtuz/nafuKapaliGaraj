@@ -97,6 +97,18 @@ function make_test_db(): array
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now')),
       updated_at TEXT NOT NULL, deleted_at TEXT NULL
     );
+    CREATE TABLE projects (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'planned', location_id TEXT NULL, notes TEXT NULL,
+      updated_at TEXT NOT NULL, deleted_at TEXT NULL
+    );
+    CREATE TABLE bom_items (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL, part_id TEXT NULL,
+      raw_ref TEXT NULL, raw_value TEXT NULL, raw_footprint TEXT NULL, raw_mpn TEXT NULL,
+      note TEXT NULL, sort_order INTEGER NOT NULL DEFAULT 0, qty_needed NUMERIC NOT NULL,
+      updated_at TEXT NOT NULL, deleted_at TEXT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
     SQL;
 
     $pdo->exec($ddl);

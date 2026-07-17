@@ -512,4 +512,65 @@ fwrite(STDOUT, "\nTEST 20 — tek transaction'lı push: bir op reddedilince Dİ�
     check($db->one('SELECT 1 FROM parts WHERE sku = :s', ['s' => 'X']) === null, 'geçersiz parça yazılmadı');
 }
 
+fwrite(STDOUT, "\nTEST 21 — Projeler + BOM (FAZ 3a): LWW katalog sync, bootstrap, FK sırası, tenant izolasyonu, idempotentlik\n");
+{
+    [$db] = make_test_db();
+    $t = seed_tenant($db);
+    $svc = new SyncService($db, $t['tenant_id'], $t['user_id']);
+    $ids = scaffold($svc); // part + location
+
+    $projId = Uuid::v7();
+    $bomId = Uuid::v7();
+    $opProj = ['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'project',
+        'data' => ['id' => $projId, 'name' => 'LED Saat', 'status' => 'active', 'updated_at' => iso(1)]];
+    $opBom = ['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'bom_item',
+        'data' => ['id' => $bomId, 'project_id' => $projId, 'part_id' => $ids['part_id'],
+                   'raw_ref' => 'R1,R2', 'raw_value' => '10k', 'qty_needed' => 2, 'sort_order' => 0, 'updated_at' => iso(1)]];
+
+    // Proje ÖNCE, bom SONRA (FK sırası) → ikisi de uygulanır
+    $r = $svc->push([$opProj, $opBom]);
+    eq(count($r['applied']), 2, 'proje + bom upsert uygulandı');
+    $boot = $svc->bootstrap();
+    eq(count($boot['projects']), 1, 'bootstrap 1 proje döndürür');
+    eq(count($boot['bom_items']), 1, 'bootstrap 1 bom satırı döndürür');
+    check(($boot['projects'][0]['name'] ?? '') === 'LED Saat', 'proje adı doğru');
+    check(($boot['bom_items'][0]['part_id'] ?? '') === $ids['part_id'], 'bom satırı parçaya eşleşti');
+
+    // pull change-feed proje + bom taşır
+    $pull = $svc->pull(0, 500);
+    $entities = array_map(fn ($c) => $c['entity'] ?? '', $pull['changes']);
+    check(in_array('project', $entities, true) && in_array('bom_item', $entities, true), 'pull change-feed project + bom_item taşır');
+
+    // Idempotentlik: aynı op'lar tekrar → tek satır, hata yok
+    $r2 = $svc->push([$opProj, $opBom]);
+    eq(count($r2['rejected']), 0, 'tekrar push reddedilmedi (idempotent)');
+    eq(count($svc->bootstrap()['bom_items']), 1, 'tekrar push sonrası hâlâ 1 bom satırı');
+
+    // FK sırası: proje OLMADAN bom push → FK ihlali → reddedilir + satır yazılmaz (op retry'da kalır)
+    $orphanBom = ['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'bom_item',
+        'data' => ['id' => Uuid::v7(), 'project_id' => Uuid::v7(), 'qty_needed' => 1, 'updated_at' => iso(2)]];
+    $r3 = $svc->push([$orphanBom]);
+    eq(count($r3['applied']), 0, 'yetim bom (proje yok) uygulanmadı');
+    eq(count($r3['rejected']), 1, 'yetim bom reddedildi (FK)');
+    eq(count($svc->bootstrap()['bom_items']), 1, 'yetim bom DB\'ye yazılmadı');
+
+    // Tenant izolasyonu: B tenant'ı A'nın projesini görmez
+    $tb = seed_tenant($db, 'Atolye B');
+    $svcB = new SyncService($db, $tb['tenant_id'], $tb['user_id']);
+    eq(count($svcB->bootstrap()['projects']), 0, 'B tenant A\'nın projesini görmez (izolasyon)');
+    // B, A'nın projesine bom bağlayamaz (çapraz-tenant referans)
+    $bLoc = Uuid::v7(); $bPart = Uuid::v7();
+    $svcB->push([
+        opUpsertLocation(['id' => $bLoc, 'code' => 'B1', 'type' => 'drawer', 'path' => 'B/B1', 'updated_at' => iso(0)]),
+        opUpsertPart(['id' => $bPart, 'sku' => 'B-X', 'name' => 'x', 'count_mode' => 'exact', 'updated_at' => iso(0)]),
+    ]);
+    $crossProj = Uuid::v7();
+    $rc = $svcB->push([['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'project',
+        'data' => ['id' => $crossProj, 'name' => 'B proj', 'status' => 'planned', 'updated_at' => iso(3)]]]);
+    eq(count($rc['applied']), 1, 'B kendi projesini kurar');
+    $rc2 = $svcB->push([['op_id' => Uuid::v7(), 'type' => 'upsert', 'entity' => 'bom_item',
+        'data' => ['id' => Uuid::v7(), 'project_id' => $crossProj, 'part_id' => $ids['part_id'], 'qty_needed' => 1, 'updated_at' => iso(3)]]]);
+    eq(count($rc2['rejected']), 1, 'B, A\'nın parçasını BOM\'a bağlayamaz (çapraz-tenant reddi)');
+}
+
 exit(test_summary());
