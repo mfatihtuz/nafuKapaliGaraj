@@ -602,23 +602,26 @@ export async function deletePartSupplier(id: string): Promise<void> {
 
 /**
  * Borçlu-başına 'LOAN-<slug>' sanal konumu bul-veya-oluştur. Aynı borçluya verilen tüm
- * ödünçler TEK gözde toplanır (borçlu bazlı görünüm). Farklı borçlu aynı slug'a düşerse sonek.
+ * ödünçler TEK gözde toplanır (borçlu bazlı görünüm).
+ *
+ * id borçlu slug'ından DETERMİNİSTİK (part_supplier ile aynı kalıp — inceleme bulgusu #1/#3):
+ * iki ÇEVRİMDIŞI cihaz aynı yeni borçluya ödünç verince AYNI id + AYNI code üretir → uq_loc_code
+ * UNIQUE çakışması olmaz, LWW upsert tek satırda birleşir. (Rastgele uuid ile kod aynı/id farklı
+ * olur, ikinci cihazın konumu kalıcı reddedilir → hayalet location_id + dengesiz defter.)
+ * Farklı borçlu aynı slug'a düşerse aynı gözü paylaşır (nadir; kabul edilebilir).
  */
 async function loanLocationForBorrower(borrower: string): Promise<{ id: string; created: Location | null }> {
   const slug = foldToAscii(borrower).toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 16) || 'X'
   const code = `LOAN-${slug}`
-  const all = await db.locations.toArray()
-  const existing = all.find((l) => l.type === 'loan' && l.code === code && !l.deleted_at)
-  if (existing) return { id: existing.id, created: null }
-  const codes = new Set(all.map((l) => l.code))
-  let finalCode = code
-  if (codes.has(finalCode)) { let i = 2; while (codes.has(`${code}-${i}`)) i++; finalCode = `${code}-${i}` }
+  const id = await deterministicUuid('loanloc:' + slug)
+  const existing = await db.locations.get(id)
+  if (existing && !existing.deleted_at) return { id, created: null }
   const ts = nowIso()
   const loc: Location = {
-    id: uuidv7(), parent_id: null, code: finalCode, name: borrower, type: 'loan', path: finalCode,
+    id, parent_id: null, code, name: borrower, type: 'loan', path: code,
     photo_id: null, capacity_note: null, sort_order: 0, updated_at: ts, deleted_at: null,
   }
-  return { id: loc.id, created: loc }
+  return { id, created: loc }
 }
 
 /**
@@ -682,9 +685,16 @@ export async function returnLoan(
   const refId = loan.id
   if (part.count_mode === 'level') {
     const tIn = await deterministicUuid('loanret:in:' + loan.id)
-    const tOut = await deterministicUuid('loanret:out:' + loan.id)
     await setLevel(part.id, toLocationId, loanLevel ?? 'full', null, { reason: 'loan_return', refId, txId: tIn })
-    await setLevel(part.id, loan.location_id, 'empty', null, { reason: 'loan_return', refId, txId: tOut })
+    // Doluluk modunda göz TEK durumludur (adet yok). Aynı borçlunun LOAN gözünde/parçada
+    // BAŞKA açık ödünç kaldıysa gözü boşaltma — erken 'empty' diğer ödüncün stoğunu kaybeder
+    // (inceleme bulgusu #4). Yalnız SON iade gözü boşaltır.
+    const others = (await db.loans.where('part_id').equals(part.id).toArray())
+      .filter((l) => l.id !== loan.id && l.location_id === loan.location_id && !l.deleted_at && !l.returned_at)
+    if (others.length === 0) {
+      const tOut = await deterministicUuid('loanret:out:' + loan.id)
+      await setLevel(part.id, loan.location_id, 'empty', null, { reason: 'loan_return', refId, txId: tOut })
+    }
   } else {
     const n = Math.max(0, Number(loan.qty))
     if (n > 0) {
@@ -803,7 +813,14 @@ export async function receivePoItem(item: PoItem, targetLocationId: string, rece
   if (!item.part_id) throw new Error('PO_ITEM_NO_PART')
   const n = Math.max(0, receiveQty)
   if (n === 0) throw new Error('QTY_ZERO')
-  await moveStock({ partId: item.part_id, locationId: targetLocationId, delta: n, reason: 'purchase', refId: item.id })
+  // Sayım moduna göre stok işle (inceleme bulgusu #2): doluluk (level) modunda adet yoktur —
+  // teslim hedef gözü DOLU yapar; aksi hâlde exact/takipsiz gibi delta yazılıp hayalet qty oluşurdu.
+  const part = await db.parts.get(item.part_id)
+  if (part?.count_mode === 'level') {
+    await setLevel(item.part_id, targetLocationId, 'full', null, { reason: 'purchase', refId: item.id })
+  } else {
+    await moveStock({ partId: item.part_id, locationId: targetLocationId, delta: n, reason: 'purchase', refId: item.id })
+  }
   const ts = nowIso()
   const updated: PoItem = {
     ...item, received_qty: Number(item.received_qty) + n,

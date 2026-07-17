@@ -1370,6 +1370,58 @@ await sect('FF-orders', {}, async ({ page, pageErrors }) => {
   check('FF10 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
 })
 
+// ═══ GG. FAZ 3b İNCELEME DÜZELTMELERİ (regresyon) ═══════════════════════════
+await sect('GG-3b-fixes', {}, async ({ page, pageErrors }) => {
+  // Bulgu #5/#6 — product_url javascript: XSS süzgeci: kötü URL href olarak render EDİLMEMELİ
+  await page.evaluate(async () => {
+    const put = (store, rows) => new Promise((res, rej) => {
+      const o = indexedDB.open('depo')
+      o.onsuccess = () => { const d = o.result; const tx = d.transaction(store, 'readwrite'); rows.forEach((r) => tx.objectStore(store).put(r)); tx.oncomplete = () => { d.close(); res() }; tx.onerror = () => rej(tx.error) }
+    })
+    const NOW = new Date().toISOString()
+    await put('suppliers', [{ id: 'sup-x', name: 'Kötü', website: null, updated_at: NOW, deleted_at: null }])
+    await put('partSuppliers', [{ id: 'ps-x', part_id: 'p-r', supplier_id: 'sup-x', supplier_sku: 'X', product_url: 'javascript:alert(document.cookie)', last_price: 1, currency: 'TRY', last_price_at: NOW, updated_at: NOW, deleted_at: null }])
+  })
+  await page.goto(BASE + 'parts/p-r', { waitUntil: 'networkidle' }); await page.waitForTimeout(500)
+  const jsHrefs = await page.locator('a[href^="javascript:"]').count()
+  check('GG1 javascript: URL href olarak render edilmedi (XSS süzgeci)', jsHrefs === 0, `${jsHrefs} tehlikeli anchor`)
+  check('GG2 tedarikçi yine de listelenir (yalnız link gizli)', (await bodyText(page)).includes('Kötü'))
+
+  // Bulgu #1/#3 — aynı borçluya ödünç konumu DETERMİNİSTİK: iki kez ödünç ver → TEK LOAN konumu
+  await page.getByRole('button', { name: /Ödünç ver/ }).first().click(); await page.waitForTimeout(250)
+  await page.locator('input[placeholder*="Kime"]').fill('Veli')
+  await page.locator('input.w-24.text-center').fill('5'); await page.waitForTimeout(150)
+  await page.locator('button.btn-navy', { hasText: 'Ödünç ver' }).click(); await page.waitForTimeout(700)
+  await page.getByRole('button', { name: /Ödünç ver/ }).first().click(); await page.waitForTimeout(250)
+  await page.locator('input[placeholder*="Kime"]').fill('Veli')
+  await page.locator('input.w-24.text-center').fill('3'); await page.waitForTimeout(150)
+  await page.locator('button.btn-navy', { hasText: 'Ödünç ver' }).click(); await page.waitForTimeout(700)
+  const locs = await dexie(page, 'locations')
+  const veliLocs = locs.filter((l) => l.type === 'loan' && l.code === 'LOAN-VELI' && !l.deleted_at)
+  check('GG3 aynı borçluya iki ödünç → TEK LOAN konumu (deterministik id)', veliLocs.length === 1, `${veliLocs.length} konum`)
+  const veliLoans = (await dexie(page, 'loans')).filter((l) => l.borrower === 'Veli' && !l.deleted_at && !l.returned_at)
+  check('GG4 iki ödünç aynı LOAN gözünü paylaşır', veliLoans.length === 2 && veliLoans.every((l) => l.location_id === veliLocs[0]?.id))
+  const veliStock = (await dexie(page, 'stock')).find((s) => s.part_id === 'p-r' && s.location_id === veliLocs[0]?.id)
+  check('GG5 LOAN gözünde toplam 8 (5+3, tek gözde birikti)', Number(veliStock?.qty) === 8, JSON.stringify(veliStock))
+
+  // Bulgu #2 — level (doluluk) parça PO teslim: göz DOLU olmalı, hayalet qty OLMAMALI
+  await page.goto(BASE + 'orders', { waitUntil: 'networkidle' }); await page.waitForTimeout(300)
+  await page.getByRole('button', { name: /Yeni sipariş/ }).click(); await page.waitForTimeout(700)
+  await page.locator('input[placeholder*="Parça ara"]').fill('Cam'); await page.waitForTimeout(300)
+  await page.getByRole('button', { name: /Cam Elyaf/ }).first().click(); await page.waitForTimeout(200)
+  await page.locator('input[placeholder="Adet"]').fill('1')
+  await page.locator('div.flex.gap-2:has(input[placeholder="Birim fiyat"]) button').click(); await page.waitForTimeout(600)
+  await page.getByRole('button', { name: /Sipariş verildi olarak işaretle/ }).click(); await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Teslim al', exact: true }).first().click(); await page.waitForTimeout(250)
+  await page.locator('input[placeholder*="onum kodu"]').fill('D1'); await page.waitForTimeout(250)
+  await page.locator('button.btn-primary', { hasText: 'Teslim al' }).click(); await page.waitForTimeout(700)
+  const camStock = (await dexie(page, 'stock')).find((s) => s.key === 'p-cam|d1')
+  check('GG6 level teslim: göz DOLU (setLevel), sayısal hayalet qty yok', camStock?.level === 'full' && !(Number(camStock?.qty) > 0), JSON.stringify(camStock))
+  const camTx = (await dexie(page, 'transactions')).find((t) => t.part_id === 'p-cam' && t.reason === 'purchase' && t.location_id === 'd1')
+  check('GG7 level teslim purchase hareketi level_to=full (delta yok)', camTx?.level_to === 'full' && camTx?.delta == null, JSON.stringify(camTx))
+  check('GG8 sayfa hatası yok', pageErrors.length === 0, pageErrors.join(' | '))
+})
+
 // ---------------------------------------------------------------------------
 await browser.close()
 const fails = results.filter((r) => !r.ok)

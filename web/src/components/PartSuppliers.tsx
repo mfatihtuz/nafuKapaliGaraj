@@ -3,6 +3,7 @@ import { useSuppliers, usePartSuppliers } from '../db/queries'
 import { saveSupplier, savePartSupplier, deletePartSupplier } from '../db/actions'
 import { useT } from '../i18n'
 import { useToast } from './Toast'
+import { safeHttpUrl } from '../lib/url'
 import { IconTrash, IconPlus } from './icons'
 
 const CURRENCIES = ['TRY', 'USD', 'EUR']
@@ -69,10 +70,10 @@ export function PartSuppliers({ partId, canWrite }: { partId: string; canWrite: 
                       <span className="chip bg-green-50 text-[10px] font-semibold text-green-700">{t('supplier.cheapest')}</span>
                     )}
                   </div>
-                  {(ps.supplier_sku || ps.product_url) && (
+                  {(ps.supplier_sku || safeHttpUrl(ps.product_url)) && (
                     <div className="truncate text-[11px] text-brand-400">
                       {ps.supplier_sku}
-                      {ps.product_url && <> · <a href={ps.product_url} target="_blank" rel="noreferrer" className="text-accent hover:underline">{t('supplier.link')}</a></>}
+                      {safeHttpUrl(ps.product_url) && <> · <a href={safeHttpUrl(ps.product_url)} target="_blank" rel="noreferrer" className="text-accent hover:underline">{t('supplier.link')}</a></>}
                     </div>
                   )}
                 </div>

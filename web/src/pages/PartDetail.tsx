@@ -17,6 +17,7 @@ import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
 import { IconEdit, IconTrash, IconCheck, IconMoveArrow, IconUndo } from '../components/icons'
 import { LocationPicker, resolveLeaf } from '../components/LocationPicker'
+import { safeHttpUrl } from '../lib/url'
 import { PhotoGallery } from '../components/PhotoGallery'
 import { PartSuppliers } from '../components/PartSuppliers'
 import { LoanSection } from '../components/LoanSection'
@@ -323,11 +324,11 @@ export function PartDetail() {
             <input id="pds" type="url" inputMode="url" className="input font-mono text-sm" placeholder="https://…"
               value={draft.datasheet_url ?? ''} onChange={(e) => setDraft({ ...draft, datasheet_url: e.target.value || null })} />
           </div>
-        ) : (part.notes || part.datasheet_url) && (
+        ) : (part.notes || safeHttpUrl(part.datasheet_url)) && (
           <div className="card mb-3 p-4">
             {part.notes && <><div className="field-label">{t('common.notes')}</div><p className="mb-2 whitespace-pre-wrap text-sm text-brand-700">{part.notes}</p></>}
-            {part.datasheet_url && (
-              <a href={part.datasheet_url} target="_blank" rel="noreferrer" className="text-sm font-medium text-accent-700 underline">
+            {safeHttpUrl(part.datasheet_url) && (
+              <a href={safeHttpUrl(part.datasheet_url)} target="_blank" rel="noreferrer" className="text-sm font-medium text-accent-700 underline">
                 {t('part.datasheet')} ↗
               </a>
             )}
